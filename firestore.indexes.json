@@ -1,0 +1,5 @@
+{ "indexes": [
+  { "collectionGroup": "attempts", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "examId", "order": "ASCENDING" }, { "fieldPath": "startedAt", "order": "DESCENDING" }] },
+  { "collectionGroup": "events", "queryScope": "COLLECTION_GROUP", "fields": [{ "fieldPath": "attemptId", "order": "ASCENDING" }, { "fieldPath": "timestamp", "order": "ASCENDING" }] },
+  { "collectionGroup": "questionBank", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "subject", "order": "ASCENDING" }, { "fieldPath": "difficulty", "order": "ASCENDING" }] }
+], "fieldOverrides": [] }
