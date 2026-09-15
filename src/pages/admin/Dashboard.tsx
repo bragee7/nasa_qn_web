@@ -22,10 +22,18 @@ export default function AdminDashboard(){
   const [msg,setMsg]=useState(''); const [err,setErr]=useState('');
   const [openAdd,setOpenAdd]=useState(true);
 
-  function audit(action:string,targetId:string,metadata:any={}){
+  function audit(action:string,targetId:string,metadata:any={}, targetType='student'){
     const l=db.all<any>('auditLogs');
-    l.push({id:crypto.randomUUID(),adminId:session!.uid,adminEmail:session!.email,action,targetType:'student',targetId,timestamp:Date.now(),metadata});
+    l.push({id:crypto.randomUUID(),adminId:session!.uid,adminEmail:session!.email,action,targetType,targetId,timestamp:Date.now(),metadata});
     localStorage.setItem('examora_auditLogs',JSON.stringify(l));
+  }
+  function deleteExam(e:any){
+    const atts=db.all<any>('attempts').filter((a:any)=>a.examId===e.id);
+    const warn=atts.length? ` — ${atts.length} attempt(s) will remain in Results.`:'';
+    if(!confirm(`Delete exam "${e.title}" [${e.status}]? Cannot be undone.${warn}`)) return;
+    db.remove('exams', e.id);
+    audit('EXAM_DELETED', e.id, {title:e.title,status:e.status,attempts:atts.length}, 'exam');
+    location.reload();
   }
 
   async function handleAdd(){
@@ -88,7 +96,7 @@ export default function AdminDashboard(){
   return <Shell sidebar={<><SideLink to="/admin/dashboard" label="Dashboard" /><SideLink to="/admin/students" label="Students" /><SideLink to="/admin/exams" label="Exams" /><SideLink to="/admin/questions" label="Question Bank" /><SideLink to="/admin/question-banks" label="Banks" /><SideLink to="/admin/results" label="Results" /><SideLink to="/admin/monitoring" label="Monitoring" /><SideLink to="/admin/analytics" label="Analytics" /><SideLink to="/admin/audit-logs" label="Audit Logs" /><SideLink to="/admin/settings" label="Settings" /></>}>
     <div className="grid sm:grid-cols-4 gap-4">
       <Card><p className="text-xs text-slate-500">TOTAL STUDENTS</p><p className="text-3xl font-extrabold">{list.length}</p></Card>
-      <Card><p className="text-xs text-slate-500">ACTIVE EXAMS</p><p className="text-3xl font-extrabold">{exams.filter((e:any)=>e.status==='ACTIVE').length}</p></Card>
+      <Card><p className="text-xs text-slate-500">ACTIVE EXAMS</p><p className="text-3xl font-extrabold">{exams.filter((e:any)=>['ACTIVE','SCHEDULED'].includes(e.status)).length}</p></Card>
       <Card><p className="text-xs text-slate-500">COMPLETED ATTEMPTS</p><p className="text-3xl font-extrabold">{completed.length}</p></Card>
       <Card><p className="text-xs text-slate-500">AVG SCORE</p><p className="text-3xl font-extrabold">{avg}%</p></Card>
     </div>
@@ -146,6 +154,19 @@ export default function AdminDashboard(){
       </div>}
     </Card>
 
-    <Card><b>Upcoming exams</b>{exams.filter((e:any)=>e.status==='SCHEDULED').map((e:any)=><p key={e.id} className="text-sm">{e.title} — {new Date(e.startAt).toLocaleString()}</p>)||null}{exams.filter((e:any)=>e.status==='SCHEDULED').length===0&&<p className="text-sm text-slate-500">None scheduled.</p>}</Card>
+    <Card>
+      <div className="flex items-center gap-2"><b>Active exams — easy delete</b><span className="text-xs text-slate-500">({exams.filter((e:any)=>['ACTIVE','SCHEDULED'].includes(e.status)).length} live)</span><Link className="ml-auto btn-ghost !px-3 !py-1 text-xs" to="/admin/exams">Manage exams →</Link></div>
+      {exams.filter((e:any)=>['ACTIVE','SCHEDULED'].includes(e.status)).length===0
+        ? <p className="text-sm text-slate-500 mt-2">No active exams. Published exams show here with a one-click Delete.</p>
+        : <div className="mt-3 space-y-2">{exams.filter((e:any)=>['ACTIVE','SCHEDULED'].includes(e.status)).map((e:any)=>{
+            const atts=db.all<any>('attempts').filter((a:any)=>a.examId===e.id);
+            return <div key={e.id} className="flex items-center gap-2 border rounded-xl px-3 py-2 bg-white">
+              <div className="min-w-0"><p className="text-sm font-semibold truncate">{e.title}</p><p className="text-xs text-slate-500 truncate">{e.status} · {e.subject} · {new Date(e.startAt).toLocaleString()} · {atts.length} attempt(s)</p></div>
+              <Link className="ml-auto btn-ghost !px-2 !py-1 text-xs shrink-0" to={`/admin/exams/${e.id}`}>Edit</Link>
+              <button className="btn-danger !px-3 !py-1 text-xs shrink-0" onClick={()=>deleteExam(e)} title="Delete active exam — cannot be undone">Delete</button>
+            </div>;
+          })}</div>}
+      {exams.filter((e:any)=>e.status==='DRAFT').length>0 && <div className="mt-3 pt-3 border-t"><p className="text-xs font-semibold text-slate-600">Drafts ({exams.filter((e:any)=>e.status==='DRAFT').length})</p><div className="mt-2 space-y-2">{exams.filter((e:any)=>e.status==='DRAFT').map((e:any)=><div key={e.id} className="flex items-center gap-2 border rounded-xl px-3 py-2 bg-slate-50"><span className="text-sm truncate">{e.title}</span><span className="text-xs text-slate-500">DRAFT</span><button className="ml-auto btn-danger !px-2 !py-1 text-xs" onClick={()=>deleteExam(e)}>Delete</button></div>)}</div></div>}
+    </Card>
   </Shell>;
 }
