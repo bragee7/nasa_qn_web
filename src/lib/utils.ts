@@ -24,7 +24,7 @@ export function examDepartments(e: { department?: string[] | string }): string[]
   if (!d || d === 'all') return [];
   return [d];
 }
-export const DEPT_OPTIONS = ['CSE','IT','ECE','EEE','MECH','CIVIL'];
+export const DEPT_OPTIONS = ['CSE','IT','ECE','EEE','MECH','CIVIL','CS-Cyber','AI&DS','AERO'];
 export function fmtClock(ms: number): string {
   const s=Math.max(0,Math.floor(ms/1000)); const m=Math.floor(s/60); return `${String(m).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
 }

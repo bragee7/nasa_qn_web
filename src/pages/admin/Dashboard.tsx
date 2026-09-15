@@ -107,7 +107,7 @@ export default function AdminDashboard(){
           <div><label className="label">Register No *</label><input className="input" placeholder="e.g. 22CSE001" value={reg} onChange={e=>setReg(e.target.value)} /></div>
           <div><label className="label">Name *</label><input className="input" placeholder="Full name" value={name} onChange={e=>setName(e.target.value)} /></div>
           <div className="sm:col-span-2"><label className="label">Email *</label><input className="input" placeholder="student@college.edu" value={email} onChange={e=>setEmail(e.target.value)} /></div>
-          <div><label className="label">Department</label><select className="input" value={dpt} onChange={e=>setDpt(e.target.value)}><option>CSE</option><option>IT</option><option>ECE</option><option>EEE</option><option>MECH</option><option>CIVIL</option></select></div>
+          <div><label className="label">Department</label><select className="input" value={dpt} onChange={e=>setDpt(e.target.value)}><option>CSE</option><option>IT</option><option>ECE</option><option>EEE</option><option>MECH</option><option>CIVIL</option><option>CS-Cyber</option><option>AI&DS</option><option>AERO</option></select></div>
           <div><label className="label">Year</label><select className="input" value={yr} onChange={e=>setYr(e.target.value)}><option value="2">2</option><option value="3">3</option></select></div>
           <div><label className="label">Section</label><input className="input" placeholder="A" value={sec} onChange={e=>setSec(e.target.value)} /></div>
         </div>
@@ -124,7 +124,7 @@ export default function AdminDashboard(){
       <div className="flex flex-wrap gap-2 items-center">
         <b className="mr-auto">Students — easy delete</b>
         <input className="input !w-56" placeholder="Search reg no / name / email" value={q} onChange={e=>setQ(e.target.value)} />
-        <select className="input !w-32" value={dept} onChange={e=>setDept(e.target.value)}><option>All</option><option>CSE</option><option>IT</option><option>ECE</option><option>EEE</option><option>MECH</option><option>CIVIL</option></select>
+        <select className="input !w-32" value={dept} onChange={e=>setDept(e.target.value)}><option>All</option><option>CSE</option><option>IT</option><option>ECE</option><option>EEE</option><option>MECH</option><option>CIVIL</option><option>CS-Cyber</option><option>AI&DS</option><option>AERO</option></select>
         <select className="input !w-24" value={year} onChange={e=>setYear(e.target.value)}><option>All</option><option>2</option><option>3</option></select>
         <Link className="btn-ghost !px-3 !py-1 text-xs" to="/admin/students">Open full list →</Link>
       </div>

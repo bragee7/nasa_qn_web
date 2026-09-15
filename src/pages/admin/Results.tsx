@@ -13,7 +13,7 @@ export default function Results(){
   return <Shell sidebar={<><SideLink to="/admin/results" label="Results" /><SideLink to="/admin/monitoring" label="Monitoring" /><SideLink to="/admin/analytics" label="Analytics" /><SideLink to="/admin/dashboard" label="Dashboard" /></>}>
     <Card><div className="flex flex-wrap gap-2 items-center"><b className="mr-auto">Results</b>
       <select className="input !w-48" value={examF} onChange={e=>setExamF(e.target.value)}><option>All</option>{exams.map(x=><option key={x.id} value={x.id}>{x.title}</option>)}</select>
-      <select className="input !w-32" value={dep} onChange={e=>setDep(e.target.value)}><option>All</option><option>CSE</option><option>IT</option><option>ECE</option></select>
+      <select className="input !w-32" value={dep} onChange={e=>setDep(e.target.value)}><option>All</option><option>CSE</option><option>IT</option><option>ECE</option><option>EEE</option><option>MECH</option><option>CIVIL</option><option>CS-Cyber</option><option>AI&DS</option><option>AERO</option></select>
       <button className="btn-primary" onClick={()=>{ exportResultsWorkbook(rows,students,exams);
         const l=db.all<any>('auditLogs'); l.push({id:crypto.randomUUID(),adminId:session!.uid,adminEmail:session!.email,action:'EXCEL_EXPORTED',targetType:'results',targetId:examF,timestamp:Date.now(),metadata:{count:rows.length}}); localStorage.setItem('examora_auditLogs',JSON.stringify(l)); }}>Export Excel</button></div></Card>
      {rows.length===0?<Empty title="No results." />:<Card><table className="table"><thead><tr><th>Reg No</th><th>Name</th><th>Dept</th><th>Score</th><th>Monitoring</th><th>Actions</th></tr></thead><tbody>
