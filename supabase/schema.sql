@@ -12,14 +12,8 @@
 -- ---------------------------------------------------------------- 1. helpers
 create extension if not exists "pgcrypto";
 
--- True when the caller owns an admin profile row.
-create or replace function public.is_admin()
-returns boolean language sql stable security definer set search_path = public as $$
-  select exists (
-    select 1 from public.profiles p
-    where p.id = auth.uid() and p.role = 'super_admin' and p.active
-  );
-$$;
+-- NOTE: public.is_admin() is defined in section 3 (after tables exist),
+-- because LANGUAGE sql bodies are validated at creation time.
 
 -- --------------------------------------------------------------- 2. tables
 -- Auth mirror: one row per Supabase Auth user (id = auth.users.id).
@@ -188,6 +182,16 @@ create table if not exists public.import_questions (
 create index if not exists idx_import_qs_import on public.import_questions (import_id);
 
 -- ------------------------------------------------------------------ 3. RLS
+-- True when the caller owns an admin profile row (defined here, after
+-- profiles exists, because LANGUAGE sql bodies validate at creation).
+create or replace function public.is_admin()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid() and p.role = 'super_admin' and p.active
+  );
+$$;
+
 alter table public.profiles          enable row level security;
 alter table public.students          enable row level security;
 alter table public.question_banks    enable row level security;

@@ -13,7 +13,7 @@ delete from public.question_banks where id = 'seed_bank_dbms';
 insert into public.question_banks
   (id, name, description, subject, year, department, section, question_count, status, created_by, created_at, updated_at)
 values
-  ('seed_bank_dbms', 'DBMS Question Bank', 'Seeded DBMS mid-term questions', 'DBMS', null, array['CSE'], null, 5, 'ACTIVE', 'ADMIN_UUID', 0, 0);
+  ('seed_bank_dbms', 'DBMS Question Bank', 'Seeded DBMS mid-term questions', 'DBMS', null, array['CSE'], 'all', 5, 'ACTIVE', 'ADMIN_UUID', 0, 0);
 
 insert into public.questions
   (id, bank_id, text, type, subject, topic, difficulty, options, correct_answer, marks, status, source_order, created_by, created_at, updated_at)
@@ -38,10 +38,10 @@ insert into public.exams
    negative_marking, negative_marks, results_release_mode, pass_pct, manual_qids, bank_id,
    created_by, created_at, updated_at)
 values
-  ('exam_dbms', 'DBMS Mid-Term', 'Mid-term covering SQL & normalization', 'DBMS', array['CSE'], null, null,
+  ('exam_dbms', 'DBMS Mid-Term', 'Mid-term covering SQL & normalization', 'DBMS', array['CSE'], null, 'all',
    60, 0, 32503680000000,
    'local-dev-placeholder', 'ACTIVE', 8, true, true, true,
-   false, 0, 'IMMEDIATE', 40, '["q1","q2","q3","q4","q5"]', 'seed_bank_dbms',
+    false, 0, 'IMMEDIATE', 40, array['q1','q2','q3','q4','q5'], 'seed_bank_dbms',
    'ADMIN_UUID', 0, 0);
 
 -- profiles for the users you created in Auth (run AFTER creating them):
