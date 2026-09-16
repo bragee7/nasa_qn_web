@@ -383,14 +383,14 @@ begin
 
   insert into auth.users (
     instance_id, id, aud, role, email, encrypted_password,
-    email_confirmed_at, confirmed_at, created_at, updated_at,
+    email_confirmed_at, created_at, updated_at,
     confirmation_token, recovery_token, email_change, email_change_token_new, email_change_token_current,
     raw_app_meta_data, raw_user_meta_data
   ) values (
     '00000000-0000-0000-0000-000000000000',
     v_uid, 'authenticated', 'authenticated', p_email,
     extensions.crypt(p_password, extensions.gen_salt('bf', 10)),
-    now(), now(), now(), now(),
+    now(), now(), now(),
     '', '', '', '', '',
     '{"provider":"email","providers":["email"]}'::jsonb,
     jsonb_build_object('name', p_name, 'student_id', p_student_id, 'email_verified', true)
