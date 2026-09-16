@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useSession } from '../../services/auth';
 import { repo } from '../../lib/repo';
+import { isSupabaseConfigured } from '../../lib/supabase';
 import { hashPassword, fmtClock } from '../../lib/utils';
 import { buildAttempt, scoreAttempt, logEvent, submitAttemptServer } from '../../services/engine';
 import { Card } from '../../components/ui';
@@ -26,7 +27,7 @@ export default function ExamTake(){
   const [online,setOnline]=useState(navigator.onLine); const [left,setLeft]=useState(0);
   useEffect(()=>{ (async()=>{
     setExam(await repo.get<Exam>('exams',examId!) ?? null);
-    setBank(await repo.all<Question>('questionBank'));
+    setBank(await repo.all<Question>(isSupabaseConfigured ? 'questionBankPublic' : 'questionBank'));
     setLoaded(true);
   })(); },[examId]);
   const attemptRef=useRef<Attempt|null>(null); attemptRef.current=attempt;

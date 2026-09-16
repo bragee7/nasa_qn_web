@@ -35,6 +35,11 @@ const MAPS: Record<string, Map> = {
     toDb: (o: any) => ({ ...Q.toDb(o), options: o.options ?? [], correct_answer: o.correctAnswer ?? null }),
     fromDb: (r: any) => ({ ...Q.fromDb(r), options: r.options ?? [] }),
   },
+  questionBankPublic: {
+    table: 'questions_public',
+    toDb: (o: any) => ({ ...Q.toDb(o), options: o.options ?? [] }),
+    fromDb: (r: any) => ({ ...Q.fromDb(r), options: r.options ?? [], correctAnswer: r.correct_answer ?? null }),
+  },
   questionBanks: {
     table: 'question_banks',
     toDb: (o: any) => ({ id: o.id, name: o.name, description: o.description ?? '', subject: o.subject ?? 'General', year: normYear(o.year), department: normDept(o.department), section: o.section ?? 'all', question_count: o.questionCount ?? 0, status: o.status ?? 'ACTIVE', created_by: o.createdBy ?? '', created_at: o.createdAt, updated_at: o.updatedAt }),
