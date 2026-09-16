@@ -1,4 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+// Force Supabase off so repo.ts uses the localStorage fallback.
+vi.mock('../lib/supabase', () => ({
+  isSupabaseConfigured: false,
+  supabase: () => null,
+}));
+
 // In-memory localStorage for the node test env (store.ts touches it lazily).
 const mem = new Map<string, string>();
 (globalThis as any).localStorage = {
