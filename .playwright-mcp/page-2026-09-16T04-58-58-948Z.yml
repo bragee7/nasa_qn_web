@@ -1,0 +1,112 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - button "Go back" [ref=e26] [cursor=pointer]: ← Back
+        - link "EXAMORA College Examination Management Platform" [ref=e7] [cursor=pointer]:
+          - /url: /
+      - generic [ref=e8]:
+        - generic [ref=e27]: Super Admin · super_admin
+        - button "Logout" [ref=e28] [cursor=pointer]
+  - generic [ref=e155]:
+    - complementary [ref=e156]:
+      - link "Dashboard" [ref=e157] [cursor=pointer]:
+        - /url: /admin/dashboard
+      - link "Students" [ref=e158] [cursor=pointer]:
+        - /url: /admin/students
+      - link "Exams" [ref=e159] [cursor=pointer]:
+        - /url: /admin/exams
+      - link "Question Bank" [ref=e160] [cursor=pointer]:
+        - /url: /admin/questions
+      - link "Banks" [ref=e161] [cursor=pointer]:
+        - /url: /admin/question-banks
+      - link "Results" [ref=e162] [cursor=pointer]:
+        - /url: /admin/results
+      - link "Monitoring" [ref=e163] [cursor=pointer]:
+        - /url: /admin/monitoring
+      - link "Analytics" [ref=e164] [cursor=pointer]:
+        - /url: /admin/analytics
+      - link "Audit Logs" [ref=e165] [cursor=pointer]:
+        - /url: /admin/audit-logs
+      - link "Settings" [ref=e166] [cursor=pointer]:
+        - /url: /admin/settings
+    - main [ref=e167]:
+      - generic [ref=e168]:
+        - generic [ref=e169]:
+          - generic [ref=e170]: Students
+          - button "＋ Add Student" [ref=e171] [cursor=pointer]
+          - link "Import Excel" [ref=e172] [cursor=pointer]:
+            - /url: /admin/students/import
+          - link "Dashboard →" [ref=e173] [cursor=pointer]:
+            - /url: /admin/dashboard
+        - generic [ref=e174]:
+          - textbox "Search reg no / name / email" [ref=e175]
+          - combobox [ref=e176]:
+            - option "All" [selected]
+            - option "CSE"
+            - option "IT"
+            - option "ECE"
+            - option "EEE"
+            - option "MECH"
+            - option "CIVIL"
+            - option "CS-Cyber"
+            - option "AI&DS"
+            - option "AERO"
+          - combobox [ref=e177]:
+            - option "All" [selected]
+            - option "2"
+            - option "3"
+          - generic [ref=e178]: 3 of 3
+      - table [ref=e181]:
+        - rowgroup [ref=e182]:
+          - row [ref=e183]:
+            - columnheader [ref=e184]:
+              - checkbox [ref=e185]
+            - columnheader "Reg No" [ref=e186]
+            - columnheader "Name" [ref=e187]
+            - columnheader "Email" [ref=e188]
+            - columnheader "Dept" [ref=e189]
+            - columnheader "Year" [ref=e190]
+            - columnheader "Sec" [ref=e191]
+            - columnheader "Status" [ref=e192]
+            - columnheader "Actions" [ref=e193]
+        - rowgroup [ref=e194]:
+          - row [ref=e195]:
+            - cell [ref=e196]:
+              - checkbox [ref=e197]
+            - cell "23CSE001" [ref=e198]
+            - cell "Arun Kumar" [ref=e199]
+            - cell "arun@college.edu" [ref=e200]
+            - cell "CSE" [ref=e201]
+            - cell "2" [ref=e202]
+            - cell "A" [ref=e203]
+            - cell "active" [ref=e204]
+            - cell [ref=e206]:
+              - button "Disable" [ref=e207] [cursor=pointer]
+              - button "Delete" [ref=e208] [cursor=pointer]
+          - row [ref=e209]:
+            - cell [ref=e210]:
+              - checkbox [ref=e211]
+            - cell "23CSE002" [ref=e212]
+            - cell "Rahul Verma" [ref=e213]
+            - cell "rahul@college.edu" [ref=e214]
+            - cell "CSE" [ref=e215]
+            - cell "2" [ref=e216]
+            - cell "A" [ref=e217]
+            - cell "active" [ref=e218]
+            - cell [ref=e220]:
+              - button "Disable" [ref=e221] [cursor=pointer]
+              - button "Delete" [ref=e222] [cursor=pointer]
+          - row [ref=e223]:
+            - cell [ref=e224]:
+              - checkbox [ref=e225]
+            - cell "23CSE031" [ref=e226]
+            - cell "Priya Singh" [ref=e227]
+            - cell "priya@college.edu" [ref=e228]
+            - cell "CSE" [ref=e229]
+            - cell "3" [ref=e230]
+            - cell "B" [ref=e231]
+            - cell "active" [ref=e232]
+            - cell [ref=e234]:
+              - button "Disable" [ref=e235] [cursor=pointer]
+              - button "Delete" [ref=e236] [cursor=pointer]

@@ -1,0 +1,22 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - button "Go back" [ref=e434] [cursor=pointer]: ← Back
+        - link "EXAMORA College Examination Management Platform" [ref=e7] [cursor=pointer]:
+          - /url: /
+      - generic [ref=e8]:
+        - generic [ref=e435]: Arun Kumar · student
+        - button "Logout" [ref=e436] [cursor=pointer]
+  - generic [ref=e461]:
+    - heading "Ready to begin" [level=1] [ref=e462]
+    - paragraph [ref=e463]: DBMS Mid-Term
+    - paragraph [ref=e464]: "Questions: 5 · Duration: 60 min"
+    - list [ref=e465]:
+      - listitem [ref=e466]: ✓ Fullscreen will be requested
+      - listitem [ref=e467]: ✓ Tab switches & fullscreen exits are recorded (not blocked)
+      - listitem [ref=e468]: ✓ Answers auto-save; offline answers sync later
+      - listitem [ref=e469]: ✓ One attempt only
+    - text: Exam password
+    - textbox "Exam password" [ref=e470]
+    - button "Enter exam" [ref=e471] [cursor=pointer]

@@ -1,0 +1,177 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - button "Go back" [ref=e26] [cursor=pointer]: ← Back
+        - link "EXAMORA College Examination Management Platform" [ref=e7] [cursor=pointer]:
+          - /url: /
+      - generic [ref=e8]:
+        - generic [ref=e27]: Super Admin · super_admin
+        - button "Logout" [ref=e28] [cursor=pointer]
+  - generic [ref=e29]:
+    - complementary [ref=e30]:
+      - link "Dashboard" [ref=e31] [cursor=pointer]:
+        - /url: /admin/dashboard
+      - link "Students" [ref=e32] [cursor=pointer]:
+        - /url: /admin/students
+      - link "Exams" [ref=e33] [cursor=pointer]:
+        - /url: /admin/exams
+      - link "Question Bank" [ref=e34] [cursor=pointer]:
+        - /url: /admin/questions
+      - link "Banks" [ref=e35] [cursor=pointer]:
+        - /url: /admin/question-banks
+      - link "Results" [ref=e36] [cursor=pointer]:
+        - /url: /admin/results
+      - link "Monitoring" [ref=e37] [cursor=pointer]:
+        - /url: /admin/monitoring
+      - link "Analytics" [ref=e38] [cursor=pointer]:
+        - /url: /admin/analytics
+      - link "Audit Logs" [ref=e39] [cursor=pointer]:
+        - /url: /admin/audit-logs
+      - link "Settings" [ref=e40] [cursor=pointer]:
+        - /url: /admin/settings
+    - main [ref=e41]:
+      - generic [ref=e42]:
+        - generic [ref=e43]:
+          - paragraph [ref=e44]: TOTAL STUDENTS
+          - paragraph [ref=e45]: "3"
+        - generic [ref=e46]:
+          - paragraph [ref=e47]: ACTIVE EXAMS
+          - paragraph [ref=e48]: "1"
+        - generic [ref=e49]:
+          - paragraph [ref=e50]: COMPLETED ATTEMPTS
+          - paragraph [ref=e51]: "0"
+        - generic [ref=e52]:
+          - paragraph [ref=e53]: AVG SCORE
+          - paragraph [ref=e54]: 0%
+      - generic [ref=e55]:
+        - generic [ref=e56]:
+          - generic [ref=e57]: Add Student — quick form
+          - generic [ref=e58]:
+            - button "Hide" [ref=e59] [cursor=pointer]
+            - link "Bulk Import →" [ref=e60] [cursor=pointer]:
+              - /url: /admin/students/import
+        - paragraph [ref=e61]:
+          - text: Create one student instantly. Default login password is
+          - code [ref=e62]: Jjcet@2k26
+          - text: (student changes on first login).
+        - generic [ref=e63]:
+          - generic [ref=e64]:
+            - text: Register No *
+            - textbox "e.g. 22CSE001" [ref=e65]
+          - generic [ref=e66]:
+            - text: Name *
+            - textbox "Full name" [ref=e67]
+          - generic [ref=e68]:
+            - text: Email *
+            - textbox "student@college.edu" [ref=e69]
+          - generic [ref=e70]:
+            - text: Department
+            - combobox [ref=e71]:
+              - option "CSE" [selected]
+              - option "IT"
+              - option "ECE"
+              - option "EEE"
+              - option "MECH"
+              - option "CIVIL"
+              - option "CS-Cyber"
+              - option "AI&DS"
+              - option "AERO"
+          - generic [ref=e72]:
+            - text: Year
+            - combobox [ref=e73]:
+              - option "2" [selected]
+              - option "3"
+          - generic [ref=e74]:
+            - text: Section
+            - textbox "A" [ref=e75]
+        - generic [ref=e76]:
+          - button "+ Add Student" [ref=e77] [cursor=pointer]
+          - button "Clear" [ref=e78] [cursor=pointer]
+      - generic [ref=e79]:
+        - generic [ref=e80]:
+          - generic [ref=e81]: Students — easy delete
+          - textbox "Search reg no / name / email" [ref=e82]
+          - combobox [ref=e83]:
+            - option "All" [selected]
+            - option "CSE"
+            - option "IT"
+            - option "ECE"
+            - option "EEE"
+            - option "MECH"
+            - option "CIVIL"
+            - option "CS-Cyber"
+            - option "AI&DS"
+            - option "AERO"
+          - combobox [ref=e84]:
+            - option "All" [selected]
+            - option "2"
+            - option "3"
+          - link "Open full list →" [ref=e85] [cursor=pointer]:
+            - /url: /admin/students
+        - table [ref=e87]:
+          - rowgroup [ref=e88]:
+            - row [ref=e89]:
+              - columnheader [ref=e90]:
+                - checkbox [ref=e91]
+              - columnheader "Reg No" [ref=e92]
+              - columnheader "Name" [ref=e93]
+              - columnheader "Email" [ref=e94]
+              - columnheader "Dept" [ref=e95]
+              - columnheader "Year" [ref=e96]
+              - columnheader "Sec" [ref=e97]
+              - columnheader "Status" [ref=e98]
+              - columnheader "Actions" [ref=e99]
+          - rowgroup [ref=e100]:
+            - row [ref=e101]:
+              - cell [ref=e102]:
+                - checkbox [ref=e103]
+              - cell "23CSE001" [ref=e104]
+              - cell "Arun Kumar" [ref=e105]
+              - cell "arun@college.edu" [ref=e106]
+              - cell "CSE" [ref=e107]
+              - cell "2" [ref=e108]
+              - cell "A" [ref=e109]
+              - cell "active" [ref=e110]
+              - cell [ref=e112]:
+                - button "Disable" [ref=e113] [cursor=pointer]
+                - button "Delete" [ref=e114] [cursor=pointer]
+            - row [ref=e115]:
+              - cell [ref=e116]:
+                - checkbox [ref=e117]
+              - cell "23CSE002" [ref=e118]
+              - cell "Rahul Verma" [ref=e119]
+              - cell "rahul@college.edu" [ref=e120]
+              - cell "CSE" [ref=e121]
+              - cell "2" [ref=e122]
+              - cell "A" [ref=e123]
+              - cell "active" [ref=e124]
+              - cell [ref=e126]:
+                - button "Disable" [ref=e127] [cursor=pointer]
+                - button "Delete" [ref=e128] [cursor=pointer]
+            - row [ref=e129]:
+              - cell [ref=e130]:
+                - checkbox [ref=e131]
+              - cell "23CSE031" [ref=e132]
+              - cell "Priya Singh" [ref=e133]
+              - cell "priya@college.edu" [ref=e134]
+              - cell "CSE" [ref=e135]
+              - cell "3" [ref=e136]
+              - cell "B" [ref=e137]
+              - cell "active" [ref=e138]
+              - cell [ref=e140]:
+                - button "Disable" [ref=e141] [cursor=pointer]
+                - button "Delete" [ref=e142] [cursor=pointer]
+      - generic [ref=e143]:
+        - generic [ref=e144]:
+          - generic [ref=e145]: Active exams — easy delete
+          - generic [ref=e146]: (1 live)
+          - link "Manage exams →" [ref=e147] [cursor=pointer]:
+            - /url: /admin/exams
+        - generic [ref=e149]:
+          - generic [ref=e150]:
+            - paragraph [ref=e151]: DBMS Mid-Term
+            - paragraph [ref=e152]: ACTIVE · DBMS · 9/16/2026, 9:28:10 AM · 0 attempt(s)
+          - link "Edit" [ref=e153] [cursor=pointer]:
+            - /url: /admin/exams/exam_dbms
+          - button "Delete" [ref=e154] [cursor=pointer]

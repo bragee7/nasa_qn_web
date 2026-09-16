@@ -1,0 +1,34 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - button "Go back" [ref=e434] [cursor=pointer]: ← Back
+        - link "EXAMORA College Examination Management Platform" [ref=e7] [cursor=pointer]:
+          - /url: /
+      - generic [ref=e8]:
+        - generic [ref=e435]: Arun Kumar · student
+        - button "Logout" [ref=e436] [cursor=pointer]
+  - generic [ref=e437]:
+    - complementary [ref=e438]:
+      - link "Dashboard" [ref=e439] [cursor=pointer]:
+        - /url: /student/dashboard
+      - link "My Exams" [ref=e440] [cursor=pointer]:
+        - /url: /student/exams
+      - link "Profile" [ref=e441] [cursor=pointer]:
+        - /url: /student/profile
+    - main [ref=e442]:
+      - generic [ref=e443]:
+        - heading "Welcome, Arun Kumar" [level=2] [ref=e444]
+        - paragraph [ref=e445]: "Department: CSE · Year: 2nd Year · Section: A · 23CSE001"
+      - heading "Available Exams" [level=3] [ref=e446]
+      - generic [ref=e448]:
+        - generic [ref=e449]:
+          - generic [ref=e450]: DBMS Mid-Term
+          - generic [ref=e451]: ACTIVE
+        - paragraph [ref=e452]: DBMS · 60 min
+        - link "Start exam" [ref=e453] [cursor=pointer]:
+          - /url: /student/exam/exam_dbms
+      - heading "Upcoming Exams" [level=3] [ref=e454]
+      - paragraph [ref=e456]: No upcoming exams.
+      - heading "Completed" [level=3] [ref=e457]
+      - paragraph [ref=e459]: No completed exams yet.

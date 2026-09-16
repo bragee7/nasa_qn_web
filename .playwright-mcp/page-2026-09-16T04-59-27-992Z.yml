@@ -1,0 +1,32 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - button "Go back" [ref=e26] [cursor=pointer]: ← Back
+        - link "EXAMORA College Examination Management Platform" [ref=e7] [cursor=pointer]:
+          - /url: /
+      - generic [ref=e8]:
+        - generic [ref=e27]: Super Admin · super_admin
+        - button "Logout" [ref=e28] [cursor=pointer]
+  - generic [ref=e237]:
+    - complementary [ref=e238]:
+      - link "Dashboard" [ref=e239] [cursor=pointer]:
+        - /url: /admin/dashboard
+      - link "Exams" [ref=e240] [cursor=pointer]:
+        - /url: /admin/exams
+      - link "Question Bank" [ref=e241] [cursor=pointer]:
+        - /url: /admin/questions
+    - main [ref=e242]:
+      - generic [ref=e244]:
+        - generic [ref=e245]: Exams
+        - link "+ New exam" [ref=e246] [cursor=pointer]:
+          - /url: /admin/exams/create
+      - generic [ref=e248]:
+        - generic [ref=e249]: DBMS Mid-Term
+        - generic [ref=e250]: ACTIVE
+        - generic [ref=e251]: DBMS · 60m · Attempts 0 · Avg 0%
+        - generic [ref=e252]:
+          - link "Edit" [ref=e253] [cursor=pointer]:
+            - /url: /admin/exams/exam_dbms
+          - button "Archive" [ref=e254] [cursor=pointer]
+          - button "Delete" [ref=e255] [cursor=pointer]

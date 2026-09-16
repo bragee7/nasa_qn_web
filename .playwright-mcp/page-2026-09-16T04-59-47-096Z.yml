@@ -1,0 +1,217 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - button "Go back" [ref=e26] [cursor=pointer]: ← Back
+        - link "EXAMORA College Examination Management Platform" [ref=e7] [cursor=pointer]:
+          - /url: /
+      - generic [ref=e8]:
+        - generic [ref=e27]: Super Admin · super_admin
+        - button "Logout" [ref=e28] [cursor=pointer]
+  - generic [ref=e256]:
+    - complementary [ref=e257]:
+      - link "Question Banks" [ref=e258] [cursor=pointer]:
+        - /url: /admin/question-banks
+      - link "All Questions" [ref=e259] [cursor=pointer]:
+        - /url: /admin/questions
+      - link "Import File" [ref=e260] [cursor=pointer]:
+        - /url: /admin/questions/import
+      - link "Import History" [ref=e261] [cursor=pointer]:
+        - /url: /admin/imports
+      - link "Exams" [ref=e262] [cursor=pointer]:
+        - /url: /admin/exams
+      - link "Dashboard" [ref=e263] [cursor=pointer]:
+        - /url: /admin/dashboard
+    - main [ref=e264]:
+      - generic [ref=e266]:
+        - generic [ref=e267]: Question bank
+        - link "⬆ Import File" [ref=e268] [cursor=pointer]:
+          - /url: /admin/questions/import
+        - link "Import history" [ref=e269] [cursor=pointer]:
+          - /url: /admin/imports
+      - generic [ref=e270]:
+        - text: Create question
+        - generic [ref=e271]:
+          - textbox "Question text" [ref=e272]
+          - combobox [ref=e273]:
+            - option "MCQ_SINGLE" [selected]
+            - option "MCQ_MULTIPLE"
+            - option "TRUE_FALSE"
+            - option "SHORT_ANSWER"
+          - combobox [ref=e274]:
+            - option "Easy"
+            - option "Medium" [selected]
+            - option "Hard"
+          - textbox "Subject" [ref=e275]: DBMS
+          - textbox "Topic" [ref=e276]: General
+          - textbox "Option o1" [ref=e277]
+          - textbox "Option o2" [ref=e278]
+          - textbox "Option o3" [ref=e279]
+          - textbox "Option o4" [ref=e280]
+          - textbox "Correct option index (0-based) / text" [ref=e281]: "0"
+          - spinbutton [ref=e282]: "2"
+          - combobox [ref=e283]:
+            - option "No bank (unassigned)" [selected]
+        - button "Save question" [ref=e284] [cursor=pointer]
+      - generic [ref=e286]:
+        - textbox "Search questions..." [ref=e287]
+        - combobox [ref=e288]:
+          - option "All" [selected]
+          - option "DBMS"
+          - option "DSA"
+          - option "OS"
+          - option "CN"
+          - option "Java"
+          - option "Python"
+        - combobox [ref=e289]:
+          - option "All answers" [selected]
+          - option "⏳ Missing answer"
+          - option "Answer set"
+        - combobox [ref=e290]:
+          - option "All banks" [selected]
+          - option "No bank"
+        - generic [ref=e291]:
+          - checkbox "Select all" [ref=e292]
+          - text: Select all
+      - generic [ref=e294]:
+        - checkbox [ref=e295]
+        - generic [ref=e296]:
+          - paragraph [ref=e297]:
+            - generic [ref=e298]: "[DBMS/Normalization/Easy]"
+            - generic [ref=e299]: 🏦 —
+            - text: What is normalization in DBMS?
+            - generic [ref=e300]: (2m)
+          - list [ref=e301]:
+            - listitem [ref=e302]:
+              - generic [ref=e303]: A.
+              - text: Removing redundancy via normal forms ✓
+            - listitem [ref=e304]:
+              - generic [ref=e305]: B.
+              - text: Indexing tables
+            - listitem [ref=e306]:
+              - generic [ref=e307]: C.
+              - text: Backing up data
+            - listitem [ref=e308]:
+              - generic [ref=e309]: D.
+              - text: Sharding
+          - generic [ref=e310]:
+            - generic [ref=e311]: "Set answer:"
+            - button "A" [ref=e312] [cursor=pointer]
+            - button "B" [ref=e313] [cursor=pointer]
+            - button "C" [ref=e314] [cursor=pointer]
+            - button "D" [ref=e315] [cursor=pointer]
+        - generic [ref=e316]:
+          - button "Duplicate" [ref=e317] [cursor=pointer]
+          - button "Archive" [ref=e318] [cursor=pointer]
+      - generic [ref=e320]:
+        - checkbox [ref=e321]
+        - generic [ref=e322]:
+          - paragraph [ref=e323]:
+            - generic [ref=e324]: "[DBMS/Normalization/Medium]"
+            - generic [ref=e325]: 🏦 —
+            - text: Which normal form eliminates transitive dependency?
+            - generic [ref=e326]: (2m)
+          - list [ref=e327]:
+            - listitem [ref=e328]:
+              - generic [ref=e329]: A.
+              - text: 1NF
+            - listitem [ref=e330]:
+              - generic [ref=e331]: B.
+              - text: 2NF
+            - listitem [ref=e332]:
+              - generic [ref=e333]: C.
+              - text: 3NF ✓
+            - listitem [ref=e334]:
+              - generic [ref=e335]: D.
+              - text: BCNF
+          - generic [ref=e336]:
+            - generic [ref=e337]: "Set answer:"
+            - button "A" [ref=e338] [cursor=pointer]
+            - button "B" [ref=e339] [cursor=pointer]
+            - button "C" [ref=e340] [cursor=pointer]
+            - button "D" [ref=e341] [cursor=pointer]
+        - generic [ref=e342]:
+          - button "Duplicate" [ref=e343] [cursor=pointer]
+          - button "Archive" [ref=e344] [cursor=pointer]
+      - generic [ref=e346]:
+        - checkbox [ref=e347]
+        - generic [ref=e348]:
+          - paragraph [ref=e349]:
+            - generic [ref=e350]: "[DBMS/SQL/Easy]"
+            - generic [ref=e351]: 🏦 —
+            - text: SQL stands for?
+            - generic [ref=e352]: (1m)
+          - list [ref=e353]:
+            - listitem [ref=e354]:
+              - generic [ref=e355]: A.
+              - text: Structured Query Language ✓
+            - listitem [ref=e356]:
+              - generic [ref=e357]: B.
+              - text: Simple Query List
+            - listitem [ref=e358]:
+              - generic [ref=e359]: C.
+              - text: Sequential Query Logic
+            - listitem [ref=e360]:
+              - generic [ref=e361]: D.
+              - text: Standard Quick Lookup
+          - generic [ref=e362]:
+            - generic [ref=e363]: "Set answer:"
+            - button "A" [ref=e364] [cursor=pointer]
+            - button "B" [ref=e365] [cursor=pointer]
+            - button "C" [ref=e366] [cursor=pointer]
+            - button "D" [ref=e367] [cursor=pointer]
+        - generic [ref=e368]:
+          - button "Duplicate" [ref=e369] [cursor=pointer]
+          - button "Archive" [ref=e370] [cursor=pointer]
+      - generic [ref=e372]:
+        - checkbox [ref=e373]
+        - generic [ref=e374]:
+          - paragraph [ref=e375]:
+            - generic [ref=e376]: "[DBMS/Transactions/Hard]"
+            - generic [ref=e377]: 🏦 —
+            - text: ACID properties include all except?
+            - generic [ref=e378]: (2m)
+          - list [ref=e379]:
+            - listitem [ref=e380]:
+              - generic [ref=e381]: A.
+              - text: Atomicity
+            - listitem [ref=e382]:
+              - generic [ref=e383]: B.
+              - text: Consistency
+            - listitem [ref=e384]:
+              - generic [ref=e385]: C.
+              - text: Isolation
+            - listitem [ref=e386]:
+              - generic [ref=e387]: D.
+              - text: Normalization ✓
+          - generic [ref=e388]:
+            - generic [ref=e389]: "Set answer:"
+            - button "A" [ref=e390] [cursor=pointer]
+            - button "B" [ref=e391] [cursor=pointer]
+            - button "C" [ref=e392] [cursor=pointer]
+            - button "D" [ref=e393] [cursor=pointer]
+        - generic [ref=e394]:
+          - button "Duplicate" [ref=e395] [cursor=pointer]
+          - button "Archive" [ref=e396] [cursor=pointer]
+      - generic [ref=e398]:
+        - checkbox [ref=e399]
+        - generic [ref=e400]:
+          - paragraph [ref=e401]:
+            - generic [ref=e402]: "[DBMS/SQL/Easy]"
+            - generic [ref=e403]: 🏦 —
+            - text: Primary key must be unique and not null.
+            - generic [ref=e404]: (1m)
+          - list [ref=e405]:
+            - listitem [ref=e406]:
+              - generic [ref=e407]: A.
+              - text: True ✓
+            - listitem [ref=e408]:
+              - generic [ref=e409]: B.
+              - text: "False"
+          - generic [ref=e410]:
+            - generic [ref=e411]: "Set answer:"
+            - button "A" [ref=e412] [cursor=pointer]
+            - button "B" [ref=e413] [cursor=pointer]
+        - generic [ref=e414]:
+          - button "Duplicate" [ref=e415] [cursor=pointer]
+          - button "Archive" [ref=e416] [cursor=pointer]

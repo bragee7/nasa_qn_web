@@ -1,0 +1,45 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - button "Go back" [ref=e434] [cursor=pointer]: ← Back
+        - link "EXAMORA College Examination Management Platform" [ref=e7] [cursor=pointer]:
+          - /url: /
+      - generic [ref=e8]:
+        - generic [ref=e435]: Arun Kumar · student
+        - button "Logout" [ref=e436] [cursor=pointer]
+  - generic [ref=e460]:
+    - generic [ref=e472]:
+      - generic [ref=e473]: DBMS Mid-Term
+      - generic [ref=e474]:
+        - generic [ref=e475]: ✓ Saved
+        - generic [ref=e476]: 00:00
+    - generic [ref=e477]:
+      - generic [ref=e478]:
+        - paragraph [ref=e479]: Question 1 of 5 · 2 marks
+        - heading "What is normalization in DBMS?" [level=2] [ref=e480]
+        - generic [ref=e481]:
+          - generic [ref=e482] [cursor=pointer]:
+            - radio "Removing redundancy via normal forms" [ref=e483]
+            - generic [ref=e484]: Removing redundancy via normal forms
+          - generic [ref=e485] [cursor=pointer]:
+            - radio "Indexing tables" [ref=e486]
+            - generic [ref=e487]: Indexing tables
+          - generic [ref=e488] [cursor=pointer]:
+            - radio "Sharding" [ref=e489]
+            - generic [ref=e490]: Sharding
+          - generic [ref=e491] [cursor=pointer]:
+            - radio "Backing up data" [ref=e492]
+            - generic [ref=e493]: Backing up data
+        - generic [ref=e494]:
+          - button "Previous" [disabled] [ref=e495]
+          - button "Next" [ref=e496] [cursor=pointer]
+      - generic [ref=e497]:
+        - paragraph [ref=e498]: Questions
+        - generic [ref=e499]:
+          - button "1" [ref=e500] [cursor=pointer]
+          - button "2" [ref=e501] [cursor=pointer]
+          - button "3" [ref=e502] [cursor=pointer]
+          - button "4" [ref=e503] [cursor=pointer]
+          - button "5" [ref=e504] [cursor=pointer]
+        - paragraph [ref=e505]: Answered 0/5

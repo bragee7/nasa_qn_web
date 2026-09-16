@@ -1,0 +1,23 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - link "EXAMORA College Examination Management Platform" [ref=e7] [cursor=pointer]:
+        - /url: /
+      - link "Login" [ref=e417] [cursor=pointer]:
+        - /url: /login
+  - generic [ref=e419]:
+    - heading "EXAMORA" [level=1] [ref=e420]
+    - paragraph [ref=e421]: College Examination Management Platform
+    - generic [ref=e422]:
+      - generic [ref=e423]:
+        - text: Email or Register No
+        - textbox "Email or Register No" [ref=e424]:
+          - /placeholder: you@college.edu or 24CS021
+          - text: admin@college.edu
+      - generic [ref=e425]:
+        - text: Password
+        - generic [ref=e426]:
+          - textbox "Password" [ref=e427]: Admin@123
+          - button "Show password" [ref=e428] [cursor=pointer]
+      - button "Login" [ref=e432] [cursor=pointer]
+    - generic [ref=e433]: "Demo: admin@college.edu / Admin@123 · arun@college.edu (or 23CSE001) / Jjcet@2k26"
