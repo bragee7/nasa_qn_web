@@ -4,7 +4,7 @@ import { Shell, SideLink } from '../../components/layout';
 import { Card, Empty } from '../../components/ui';
 import { sha } from '../../lib/store';
 import { repo } from '../../lib/repo';
-import { isSupabaseConfigured } from '../../lib/supabase';
+import { isSupabaseConfigured, supabase } from '../../lib/supabase';
 import { audit } from '../../lib/audit';
 import { DEFAULT_STUDENT_PASSWORD } from '../../config/app';
 export default function Students(){
@@ -36,7 +36,14 @@ export default function Students(){
       }
       setMsg(`Added ${n} (${r}) — password: ${DEFAULT_STUDENT_PASSWORD}`);
     } else {
-      setMsg(`Added ${n} (${r}) — now create the login in Supabase Dashboard → Authentication → Add user (${e}).`);
+      const { error: rpcErr } = await supabase().rpc('create_student_user', {
+        p_email: e, p_password: DEFAULT_STUDENT_PASSWORD, p_student_id: r, p_name: n,
+      });
+      if (rpcErr) {
+        setErr(`Auth user creation failed: ${rpcErr.message}`);
+        return;
+      }
+      setMsg(`Added ${n} (${r}) — login ready (${e} / ${DEFAULT_STUDENT_PASSWORD})`);
     }
     await audit('STUDENT_CREATED',r,{source:'students-page'},'student');
     setReg(''); setName(''); setEmail('');
@@ -50,6 +57,8 @@ export default function Students(){
       for(const u of (await repo.all<any>('users')).filter((u:any)=>u.studentId===id || u.uid==='u_'+id)){
         await repo.remove('users', u.uid);
       }
+    } else {
+      await supabase().rpc('delete_student_user', { p_student_id: id });
     }
     await audit('STUDENT_DELETED', id, {name:s?.name},'student');
     refresh();
@@ -63,6 +72,8 @@ export default function Students(){
         for(const u of (await repo.all<any>('users')).filter((u:any)=>u.studentId===id || u.uid==='u_'+id)){
           await repo.remove('users', u.uid);
         }
+      } else {
+        await supabase().rpc('delete_student_user', { p_student_id: id });
       }
       await audit('STUDENT_DELETED', id, {bulk:true},'student');
     }

@@ -5,7 +5,7 @@ import { Card } from '../../components/ui';
 import { sha } from '../../lib/store';
 import { repo } from '../../lib/repo';
 import { audit } from '../../lib/audit';
-import { isSupabaseConfigured } from '../../lib/supabase';
+import { isSupabaseConfigured, supabase } from '../../lib/supabase';
 import { DEFAULT_STUDENT_PASSWORD } from '../../config/app';
 export default function ImportStudents(){
   const [rows,setRows]=useState<any[]>([]); const [errors,setErrors]=useState<string[]>([]); const [done,setDone]=useState('');
@@ -39,16 +39,24 @@ export default function ImportStudents(){
     setRows(ok); setErrors(errs);
   }
   async function confirm(){
+    let authCreated=0, authFailed=0;
     for(const r of rows){
       await repo.put('students',{...r,uid:'u_'+r.id,status:'active',createdAt:Date.now(),updatedAt:Date.now()});
       if (!isSupabaseConfigured) {
         if(!(await repo.all<any>('users')).some(u=>u.email===r.email)) await repo.put('users',{uid:'u_'+r.id,email:r.email,passHash:await sha(DEFAULT_STUDENT_PASSWORD),role:'student',studentId:r.id,name:r.name});
+      } else {
+        const { error } = await supabase().rpc('create_student_user', {
+          p_email: r.email, p_password: DEFAULT_STUDENT_PASSWORD, p_student_id: r.studentId, p_name: r.name,
+        });
+        if (error) authFailed++; else authCreated++;
       }
     }
     await audit('STUDENT_IMPORTED',`batch:${rows.length}`,{count:rows.length},'students');
-    setDone(isSupabaseConfigured
-      ? `Imported ${rows.length} students. Create their logins in Supabase Dashboard → Authentication → Add user (bulk invite).`
-      : `Imported ${rows.length} students. Default password: ${DEFAULT_STUDENT_PASSWORD}`);
+    if (isSupabaseConfigured) {
+      setDone(`Imported ${rows.length} students. ${authCreated} logins created.${authFailed ? ` ${authFailed} failed (check Supabase Dashboard).` : ''}`);
+    } else {
+      setDone(`Imported ${rows.length} students. Default password: ${DEFAULT_STUDENT_PASSWORD}`);
+    }
     setRows([]);
   }
   return <Shell sidebar={<><SideLink to="/admin/students" label="Students" /><SideLink to="/admin/dashboard" label="Dashboard" /></>}>
