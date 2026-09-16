@@ -190,7 +190,13 @@ export default function ImportReview() {
         sourceQuestionNumber: q.sourceQuestionNumber,
         createdBy: session!.uid, createdAt: Date.now(), updatedAt: Date.now(),
       };
-      await repo.put('questionBank', bank);
+      // NOTE: public.questions has columns only for sourceImportId/sourceOrder —
+      // the file-level provenance fields (sourceFileName/sourcePage/sourceRow/
+      // sourceSheet/sourceQuestionNumber) must NOT be sent: Supabase rejects
+      // upserts with unknown columns, which aborted the whole import silently.
+      // (localStorage ignores extras, which is why this only failed on Supabase.)
+      const { sourceFileName, sourcePage, sourceRow, sourceSheet, sourceQuestionNumber, ...bankRow } = bank;
+      await repo.put('questionBank', bankRow);
       await updateStaged({ ...q, status: 'IMPORTED', importedQuestionId: bank.id });
       count++;
     }
