@@ -383,18 +383,21 @@ begin
 
   insert into auth.users (
     instance_id, id, aud, role, email, encrypted_password,
-    email_confirmed_at, created_at, updated_at,
-    confirmation_token, recovery_token, raw_app_meta_data, raw_user_meta_data
+    email_confirmed_at, confirmed_at, created_at, updated_at,
+    confirmation_token, recovery_token, email_change, email_change_token_new, email_change_token_current,
+    raw_app_meta_data, raw_user_meta_data
   ) values (
     '00000000-0000-0000-0000-000000000000',
     v_uid, 'authenticated', 'authenticated', p_email,
-    extensions.crypt(p_password, extensions.gen_salt('bf')),
-    now(), now(), now(),
-    '', '{}', '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb
+    extensions.crypt(p_password, extensions.gen_salt('bf', 10)),
+    now(), now(), now(), now(),
+    '', '', '', '', '',
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    jsonb_build_object('name', p_name, 'student_id', p_student_id, 'email_verified', true)
   );
 
   insert into auth.identities (id, user_id, provider, provider_id, identity_data, created_at, updated_at)
-  values (v_uid, v_uid, 'email', p_email, jsonb_build_object('sub', v_uid, 'email', p_email), now(), now());
+  values (gen_random_uuid(), v_uid, 'email', v_uid::text, jsonb_build_object('sub', v_uid, 'email', p_email, 'email_verified', false, 'phone_verified', false), now(), now());
 
   insert into public.profiles (id, email, role, student_id, name, active)
   values (v_uid, p_email, 'student', p_student_id, p_name, true);
