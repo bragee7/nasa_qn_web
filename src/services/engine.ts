@@ -1,6 +1,8 @@
 // Exam engine: attempt lifecycle, randomization (frozen per attempt), secure scoring.
-// Mirrors Cloud Functions logic in functions/src/index.ts — same algorithm, auditable.
+// buildAttempt/scoreAttempt are pure (also used by tests). Server-side submit &
+// event counters live in Supabase RPCs (submit_attempt, log_exam_event) when configured.
 import { db } from '../lib/store';
+import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { seededRand, shuffle } from '../lib/utils';
 import type { Attempt, Exam, Question } from '../types/models';
 export function buildAttempt(exam: Exam, bank: Question[], studentId: string, uid: string): Attempt {
@@ -39,7 +41,20 @@ export function scoreAttempt(exam: Exam, bank: Question[], answers: Record<strin
   const pct=fullTotal?Math.round(score/fullTotal*100):0;
   return { score, total: fullTotal, pct };
 }
+/** Server-side submit: ownership + deadline enforced, scoring done in Postgres.
+ *  Returns null when Supabase is not configured (caller falls back to local scoring). */
+export async function submitAttemptServer(attemptId:string, answers:Record<string,any>): Promise<{score:number;total:number;pct:number;status:string}|null>{
+  if(!isSupabaseConfigured) return null;
+  const { data, error } = await supabase().rpc('submit_attempt', { p_attempt_id: attemptId, p_answers: answers });
+  if(error) throw error;
+  return data as {score:number;total:number;pct:number;status:string};
+}
 export function logEvent(attemptId:string, examId:string, studentId:string, eventType:string, metadata:Record<string,any>={}){
+  if(isSupabaseConfigured){
+    // Server-side counter + event row (fire-and-forget; RPC enforces attempt ownership).
+    supabase().rpc('log_exam_event', { p_attempt_id: attemptId, p_event_type: eventType, p_metadata: metadata }).then(()=>{},()=>{});
+    return;
+  }
   const evs=db.all<any>('events');
   const existing=db.get<Attempt>('attempts',attemptId);
   if(existing){ // maintain server-side counters (never trust client counts)

@@ -1,11 +1,19 @@
+import { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { db } from '../../lib/store';
+import { repo } from '../../lib/repo';
 import { Card } from '../../components/ui';
 import type { Attempt, Exam } from '../../types/models';
 export default function StudentResult(){
   const { attemptId } = useParams();
-  const a = db.get<Attempt>('attempts', attemptId!);
-  const e = a?db.get<Exam>('exams', a.examId):undefined;
+  const [a,setA]=useState<Attempt|undefined>(undefined);
+  const [e,setE]=useState<Exam|undefined>(undefined);
+  const [loaded,setLoaded]=useState(false);
+  useEffect(()=>{ (async()=>{
+    const att=await repo.get<Attempt>('attempts', attemptId!); setA(att);
+    if(att) setE(await repo.get<Exam>('exams', att.examId));
+    setLoaded(true);
+  })(); },[attemptId]);
+  if(!loaded) return <div className="max-w-xl mx-auto p-10">Loading…</div>;
   if(!a||!e) return <div className="max-w-xl mx-auto p-10">Result not found.</div>;
   if(a.status==='IN_PROGRESS') return <div className="max-w-xl mx-auto p-10">Exam still in progress.</div>;
   const released = e.resultsReleaseMode==='IMMEDIATE' || a.score!==undefined;

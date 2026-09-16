@@ -1,89 +1,91 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Shell, SideLink } from '../../components/layout';
 import { Card, Empty } from '../../components/ui';
-import { db } from '../../lib/store';
 import { fmtDateTime, uid } from '../../lib/utils';
+import { repo } from '../../lib/repo';
+import { audit } from '../../lib/audit';
 import { useSession } from '../../services/auth';
 import { bankQuestions, deleteBank, deleteQuestions, getBank, recomputeCount } from '../../services/banks';
+import type { QuestionBank, Question } from '../../types/models';
 
 const LETTERS = 'ABCDE';
 export default function BankDetail() {
   const { bankId } = useParams();
   const nav = useNavigate();
   const { session } = useSession();
-  const [bank, setBank] = useState(() => getBank(bankId!));
-  const [list, setList] = useState(() => bankQuestions(bankId!));
+  const [bank, setBank] = useState<QuestionBank|undefined>(undefined);
+  const [loaded, setLoaded] = useState(false);
+  const [list, setList] = useState<Question[]>([]);
   const [q, setQ] = useState('');
   const [addIds, setAddIds] = useState('');
   const [sel, setSel] = useState<Set<string>>(new Set());
-  if (!bank) return <Shell sidebar={<SideLink to="/admin/question-banks" label="Question Banks" />}><Card><b>Bank not found.</b><p className="text-sm mt-2"><Link className="text-indigo-700 underline" to="/admin/question-banks">Back to banks</Link></p></Card></Shell>;
-  const refresh = () => { setBank(getBank(bankId!)); setList(bankQuestions(bankId!)); };
-  function audit(action: string, id: string, meta: Record<string, any> = {}) {
-    const l = db.all<any>('auditLogs');
-    l.push({ id: crypto.randomUUID(), adminId: session!.uid, adminEmail: session!.email, action, targetType: 'questionBank', targetId: id, timestamp: Date.now(), metadata: meta });
-    localStorage.setItem('examora_auditLogs', JSON.stringify(l));
-  }
-  function saveMeta(patch: Partial<{ name: string; description: string; subject: string; section: string }>) {
+  const refresh = async () => { setBank(await getBank(bankId!)); setList(await bankQuestions(bankId!)); };
+  useEffect(()=>{ (async()=>{ await refresh(); setLoaded(true); })(); },[bankId]);
+  if (loaded && !bank) return <Shell sidebar={<SideLink to="/admin/question-banks" label="Question Banks" />}><Card><b>Bank not found.</b><p className="text-sm mt-2"><Link className="text-indigo-700 underline" to="/admin/question-banks">Back to banks</Link></p></Card></Shell>;
+  if (!bank) return <Shell sidebar={<SideLink to="/admin/question-banks" label="Question Banks" />}><Card><b>Loading…</b></Card></Shell>;
+  async function saveMeta(patch: Partial<{ name: string; description: string; subject: string; section: string }>) {
     if (patch.name !== undefined && !patch.name.trim()) return alert('Bank name is required.');
-    db.put('questionBanks', { ...bank!, ...patch, updatedAt: Date.now() });
-    audit('QUESTION_BANK_UPDATED', bank!.id, patch);
+    await repo.put('questionBanks', { ...bank!, ...patch, updatedAt: Date.now() });
+    await audit('QUESTION_BANK_UPDATED', bank!.id, patch,'questionBank');
     refresh();
   }
-  function move(x: any, dir: -1 | 1) {
+  async function move(x: any, dir: -1 | 1) {
     const sorted = [...list];
     const i = sorted.findIndex(y => y.id === x.id);
     const j = i + dir;
     if (i < 0 || j < 0 || j >= sorted.length) return;
     const a = sorted[i], b = sorted[j];
     const ao = a.sourceOrder ?? i + 1, bo = b.sourceOrder ?? j + 1;
-    db.put('questionBank', { ...a, sourceOrder: bo, updatedAt: Date.now() });
-    db.put('questionBank', { ...b, sourceOrder: ao, updatedAt: Date.now() });
+    await repo.put('questionBank', { ...a, sourceOrder: bo, updatedAt: Date.now() });
+    await repo.put('questionBank', { ...b, sourceOrder: ao, updatedAt: Date.now() });
     refresh();
   }
-  function removeQ(x: any) {    if (!confirm(`Remove "${x.text.slice(0, 60)}…" from this bank? The question row is kept (unassigned).`)) return;
-    db.put('questionBank', { ...x, questionBankId: undefined, updatedAt: Date.now() });
-    recomputeCount(bank!.id);
-    audit('QUESTION_REMOVED_FROM_BANK', x.id, { bankId: bank!.id });
+  async function removeQ(x: any) {
+    if (!confirm(`Remove "${x.text.slice(0, 60)}…" from this bank? The question row is kept (unassigned).`)) return;
+    await repo.put('questionBank', { ...x, questionBankId: undefined, updatedAt: Date.now() });
+    await recomputeCount(bank!.id);
+    await audit('QUESTION_REMOVED_FROM_BANK', x.id, { bankId: bank!.id },'questionBank');
     refresh();
   }
   function toggleSel(id: string) {
     setSel(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   }
-  function bulkDel(ids: string[]) {
+  async function bulkDel(ids: string[]) {
     if (!ids.length) return;
     if (!confirm(`Permanently delete ${ids.length} selected question(s)? This cannot be undone.`)) return;
-    const r = deleteQuestions(ids);
-    for (const id of ids) audit('QUESTION_DELETED', id, { bankId: bank!.id, bulk: true });
+    const r = await deleteQuestions(ids);
+    for (const id of ids) await audit('QUESTION_DELETED', id, { bankId: bank!.id, bulk: true },'question');
     setSel(new Set());
     refresh();
     alert(`Deleted ${r.deleted} question(s).`);
   }
-  function addExisting() {
+  async function addExisting() {
     const ids = addIds.split(/[\s,]+/).map(s => s.trim()).filter(Boolean);
     if (!ids.length) return;
     let n = 0;
     for (const id of ids) {
-      const ex = db.get<any>('questionBank', id);
-      if (ex && ex.questionBankId !== bank!.id) { db.put('questionBank', { ...ex, questionBankId: bank!.id, updatedAt: Date.now() }); n++; }
+      const ex = await repo.get<any>('questionBank', id);
+      if (ex && ex.questionBankId !== bank!.id) { await repo.put('questionBank', { ...ex, questionBankId: bank!.id, updatedAt: Date.now() }); n++; }
     }
-    recomputeCount(bank!.id);
-    audit('QUESTION_ADDED_TO_BANK', bank!.id, { count: n });
+    await recomputeCount(bank!.id);
+    await audit('QUESTION_ADDED_TO_BANK', bank!.id, { count: n },'questionBank');
     setAddIds('');
     refresh();
   }
-  function quickCreate() {    const text = prompt('New question text:');
+  async function quickCreate() {
+    const text = prompt('New question text:');
     if (!text || text.length < 5) return;
-    db.put('questionBank', { id: uid('q'), text, type: 'MCQ_SINGLE', subject: bank!.subject, topic: 'General', difficulty: 'Medium', options: ['Option A', 'Option B', 'Option C', 'Option D'], correctAnswer: null, needsAnswer: true, questionBankId: bank!.id, marks: 2, status: 'active', createdBy: session!.uid, createdAt: Date.now(), updatedAt: Date.now() });
-    recomputeCount(bank!.id);
-    audit('QUESTION_ADDED_TO_BANK', bank!.id, { inline: true });
+    await repo.put('questionBank', { id: uid('q'), text, type: 'MCQ_SINGLE', subject: bank!.subject, topic: 'General', difficulty: 'Medium', options: ['Option A', 'Option B', 'Option C', 'Option D'], correctAnswer: null, needsAnswer: true, questionBankId: bank!.id, marks: 2, status: 'active', createdBy: session!.uid, createdAt: Date.now(), updatedAt: Date.now() });
+    await recomputeCount(bank!.id);
+    await audit('QUESTION_ADDED_TO_BANK', bank!.id, { inline: true },'questionBank');
     refresh();
   }
-  function delBank() {
+  async function delBank() {
     if (!confirm(`Delete bank “${bank!.name}”? Its ${list.length} question(s) are KEPT (moved to No bank). This cannot be undone.`)) return;
-    const r = deleteBank(bank!.id);
+    const r = await deleteBank(bank!.id);
     if (!r.ok) { alert(r.reason); return; }
-    audit('QUESTION_BANK_DELETED', bank!.id, { name: bank!.name, unassigned: r.unassigned });
+    await audit('QUESTION_BANK_DELETED', bank!.id, { name: bank!.name, unassigned: r.unassigned },'questionBank');
     nav('/admin/question-banks');
   }
   const filtered = list.filter(x => q === '' || x.text.toLowerCase().includes(q.toLowerCase()));

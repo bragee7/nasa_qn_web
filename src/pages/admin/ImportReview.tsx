@@ -2,20 +2,21 @@
 // IRON RULE enforced here: only APPROVED rows enter questionBank, and only
 // via the explicit "Import approved → Bank" action. NEEDS_REVIEW rows must be
 // resolved first; unresolved duplicates block approval; NOTHING auto-publishes.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Shell, SideLink } from '../../components/layout';
 import { Card, Empty } from '../../components/ui';
-import { db } from '../../lib/store';
+import { repo } from '../../lib/repo';
 import { uid } from '../../lib/utils';
 import { useSession } from '../../services/auth';
-import type { BankQuestion, Confidence, StagedQuestion } from '../../services/aiImport/types';
+import type { BankQuestion, Confidence, ImportRecord, StagedQuestion } from '../../services/aiImport/types';
 import {
   auditImport, canManageQuestions, getImport, refreshImportCounters,
   removeStaged, setImportStatus, stagedForImport, updateImport, updateStaged,
 } from '../../services/aiImport/importStore';
 import { getExtractionService, toBankCorrectAnswer } from '../../services/aiImport/providers';
 import { allBanks, ensureImportedBank, recomputeCount } from '../../services/banks';
+import type { QuestionBank } from '../../types/models';
 import { validateStaged } from '../../services/aiImport/pdfParser';
 
 const confColor: Record<Confidence, string> = {
@@ -59,19 +60,30 @@ export default function ImportReview() {
   const [asking, setAsking] = useState<string | null>(null);
   // Target bank override (null = follow the import record). '' = auto "Imported Questions".
   const [targetBank, setTargetBank] = useState<string | null>(null);
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  void tick;
+  const [rec, setRec] = useState<ImportRecord | undefined>(undefined);
+  const [all, setAll] = useState<StagedQuestion[]>([]);
+  const [banks, setBanks] = useState<QuestionBank[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(()=>{ (async()=>{
+    if (!importId) { setLoaded(true); return; }
+    setRec(await getImport(importId));
+    setAll(await stagedForImport(importId));
+    setBanks(await allBanks(false));
+    setLoaded(true);
+  })(); },[importId, tick]);
 
   if (!canManageQuestions(session?.role)) {
     return <Shell sidebar={<></>}><Card><b>Access denied.</b><p className="text-sm">Question imports are restricted to Super Admins.</p></Card></Shell>;
   }
-  const rec = importId ? getImport(importId) : undefined;
+  if (!loaded) {
+    return <Shell sidebar={<></>}><Card><b>Loading…</b></Card></Shell>;
+  }
   if (!rec) {
     return <Shell sidebar={<></>}><Card><b>Import not found.</b><p className="text-sm mt-1"><Link className="underline" to="/admin/imports">Back to import history</Link></p></Card></Shell>;
   }
   const imp = rec; // narrowed alias — closures below capture this non-optional binding
   const locked = imp.status === 'COMPLETED' || imp.status === 'CANCELLED';
-  const all = stagedForImport(imp.id);
   const rows = all.filter(q =>
     filter === 'ALL' ? true :
     filter === 'DUPLICATES' ? (q.duplicate && !q.duplicateDecision) :
@@ -80,57 +92,56 @@ export default function ImportReview() {
   const dupOpen = all.filter(q => q.duplicate && !q.duplicateDecision).length;
   const needsReview = n('NEEDS_REVIEW');
   // Where approved rows land: explicit pick > import record (?bank=) > auto bank.
-  const banks = allBanks(false);
   const targetBankId = targetBank ?? imp.bankId ?? '';
   const targetBankName = targetBankId
     ? (banks.find(b => b.id === targetBankId)?.name ?? '(unknown bank)')
     : 'Imported Questions (auto-created on import)';
 
-  const reload = () => { refreshImportCounters(imp.id); setSel([]); setTick(t => t + 1); };
+  const reload = async () => { await refreshImportCounters(imp.id); setSel([]); setTick(t => t + 1); };
   const audit = (action: string, targetId: string, metadata: Record<string, unknown> = {}) =>
     auditImport(action, session!.uid, session!.email, imp.id, { targetId, ...metadata });
 
-  function approveOne(q: StagedQuestion): boolean {
+  async function approveOne(q: StagedQuestion): Promise<boolean> {
     const reason = blockReason(q);
     if (reason) { alert(`Cannot approve: ${reason}`); return false; }
-    updateStaged({ ...q, status: 'APPROVED', approvedBy: session!.email, approvedAt: Date.now() });
-    audit('IMPORT_QUESTION_APPROVED', q.id);
+    await updateStaged({ ...q, status: 'APPROVED', approvedBy: session!.email, approvedAt: Date.now() });
+    await audit('IMPORT_QUESTION_APPROVED', q.id);
     return true;
   }
-  function approveSelected() {
+  async function approveSelected() {
     let ok = 0, skipped = 0;
     for (const id of sel) {
       const q = all.find(r => r.id === id);
       if (!q || q.status === 'APPROVED' || q.status === 'IMPORTED' || q.status === 'REJECTED') { skipped++; continue; }
       if (!blockReason(q)) {
-        updateStaged({ ...q, status: 'APPROVED', approvedBy: session!.email, approvedAt: Date.now() });
-        audit('IMPORT_QUESTION_APPROVED', q.id, { bulk: true });
+        await updateStaged({ ...q, status: 'APPROVED', approvedBy: session!.email, approvedAt: Date.now() });
+        await audit('IMPORT_QUESTION_APPROVED', q.id, { bulk: true });
         ok++;
       } else skipped++;
     }
-    audit('IMPORT_BULK_APPROVED', imp.id, { approved: ok, skipped });
+    await audit('IMPORT_BULK_APPROVED', imp.id, { approved: ok, skipped });
     alert(`Bulk approve: ${ok} approved${skipped ? `, ${skipped} skipped (invalid, missing answer, or unresolved duplicate)` : ''}.`);
     reload();
   }
-  function rejectSelected() {
+  async function rejectSelected() {
     let ok = 0;
     for (const id of sel) {
       const q = all.find(r => r.id === id);
       if (!q || q.status === 'IMPORTED' || q.status === 'REJECTED') continue;
-      updateStaged({ ...q, status: 'REJECTED' });
-      audit('IMPORT_QUESTION_REJECTED', q.id, { bulk: true });
+      await updateStaged({ ...q, status: 'REJECTED' });
+      await audit('IMPORT_QUESTION_REJECTED', q.id, { bulk: true });
       ok++;
     }
-    audit('IMPORT_BULK_REJECTED', imp.id, { rejected: ok });
+    await audit('IMPORT_BULK_REJECTED', imp.id, { rejected: ok });
     reload();
   }
-  function setDup(q: StagedQuestion, d: 'KEEP_BOTH' | 'SKIP') {
+  async function setDup(q: StagedQuestion, d: 'KEEP_BOTH' | 'SKIP') {
     if (d === 'SKIP') {
-      updateStaged({ ...q, duplicateDecision: d, status: 'REJECTED', reviewNotes: [...q.reviewNotes, 'Skipped as duplicate — never imported, original kept.'] });
-      audit('IMPORT_QUESTION_REJECTED', q.id, { reason: 'duplicate-skip' });
+      await updateStaged({ ...q, duplicateDecision: d, status: 'REJECTED', reviewNotes: [...q.reviewNotes, 'Skipped as duplicate — never imported, original kept.'] });
+      await audit('IMPORT_QUESTION_REJECTED', q.id, { reason: 'duplicate-skip' });
     } else {
-      updateStaged({ ...q, duplicateDecision: d, reviewNotes: [...q.reviewNotes, 'Staff chose KEEP BOTH — imports as a separate bank question.'] });
-      audit('IMPORT_QUESTION_EDITED', q.id, { duplicateDecision: d });
+      await updateStaged({ ...q, duplicateDecision: d, reviewNotes: [...q.reviewNotes, 'Staff chose KEEP BOTH — imports as a separate bank question.'] });
+      await audit('IMPORT_QUESTION_EDITED', q.id, { duplicateDecision: d });
     }
     reload();
   }
@@ -140,19 +151,19 @@ export default function ImportReview() {
       const svc = getExtractionService();
       const s = await svc.suggestAnswer(q.text, q.options);
       if (!s) { alert('No AI suggestion available. The local provider never guesses — enter the answer manually, or configure a cloud provider in Settings.'); return; }
-      updateStaged({
+      await updateStaged({
         ...q, correctLabels: s.labels, aiSuggested: true,
         answerSource: `AI suggested (${s.rationale}) — awaiting staff approval`,
       });
-      audit('IMPORT_AI_SUGGESTED', q.id, { labels: s.labels });
+      await audit('IMPORT_AI_SUGGESTED', q.id, { labels: s.labels });
       reload();
     } catch (e: any) {
       alert(e?.message || 'AI suggestion failed.');
     } finally { setAsking(null); }
   }
 
-  function finalImport() {
-    const fresh = stagedForImport(imp.id);
+  async function finalImport() {
+    const fresh = await stagedForImport(imp.id);
     if (fresh.some(q => q.status === 'NEEDS_REVIEW')) {
       alert('Resolve all NEEDS_REVIEW items first (approve, fix, or reject them).');
       return;
@@ -162,7 +173,7 @@ export default function ImportReview() {
     if (!approved.length) { alert('Nothing approved to import.'); return; }
     // Resolve the destination bank FIRST so approved rows can never land bankless
     // (bankless rows are invisible in exam creation). '' = auto "Imported Questions".
-    const bankId = targetBankId || ensureImportedBank(session!.email).id;
+    const bankId = targetBankId || (await ensureImportedBank(session!.email)).id;
     const bankName = banks.find(b => b.id === bankId)?.name ?? 'Imported Questions';
     if (!confirm(`Import ${approved.length} APPROVED question(s) into “${bankName}” as ACTIVE? Only approved rows enter — rejected and unapproved rows stay out.`)) return;
     let count = 0;
@@ -179,15 +190,15 @@ export default function ImportReview() {
         sourceQuestionNumber: q.sourceQuestionNumber,
         createdBy: session!.uid, createdAt: Date.now(), updatedAt: Date.now(),
       };
-      db.put('questionBank', bank);
-      updateStaged({ ...q, status: 'IMPORTED', importedQuestionId: bank.id });
+      await repo.put('questionBank', bank);
+      await updateStaged({ ...q, status: 'IMPORTED', importedQuestionId: bank.id });
       count++;
     }
-    recomputeCount(bankId);
-    audit('QUESTIONS_IMPORTED_TO_BANK', bankId, { importId: imp.id, count });
-    setImportStatus(imp.id, 'COMPLETED', { importedQuestions: count, bankId });
-    audit('IMPORT_COMPLETED', imp.id, { imported: count, bankId });
-    refreshImportCounters(imp.id);
+    await recomputeCount(bankId);
+    await audit('QUESTIONS_IMPORTED_TO_BANK', bankId, { importId: imp.id, count });
+    await setImportStatus(imp.id, 'COMPLETED', { importedQuestions: count, bankId });
+    await audit('IMPORT_COMPLETED', imp.id, { imported: count, bankId });
+    await refreshImportCounters(imp.id);
     setTick(t => t + 1);
   }
 
@@ -236,10 +247,10 @@ export default function ImportReview() {
           className="input !w-52 !text-xs ml-1"
           title="Approved rows will be saved into this bank. Auto creates an “Imported Questions” bank."
           value={targetBankId}
-          onChange={e => {
+          onChange={async e => {
             const v = e.target.value;
             setTargetBank(v);
-            updateImport(imp.id, { bankId: v || undefined });
+            await updateImport(imp.id, { bankId: v || undefined });
             setTick(t => t + 1);
           }}
         >
@@ -279,20 +290,20 @@ export default function ImportReview() {
           <button className="btn-ghost !text-xs" onClick={() => setDetail(q)}>Details</button>
           {!locked && q.status !== 'IMPORTED' && <>
             <button className="btn-ghost !text-xs" onClick={() => setEditing({ ...q })}>Edit</button>
-            {q.status !== 'APPROVED' && <button className="btn-ghost !text-xs" onClick={() => { if (approveOne(q)) reload(); }}>Approve</button>}
-            {q.status !== 'REJECTED' && <button className="btn-ghost !text-xs" onClick={() => { updateStaged({ ...q, status: 'REJECTED' }); audit('IMPORT_QUESTION_REJECTED', q.id); reload(); }}>Reject</button>}
+            {q.status !== 'APPROVED' && <button className="btn-ghost !text-xs" onClick={async () => { if (await approveOne(q)) reload(); }}>Approve</button>}
+            {q.status !== 'REJECTED' && <button className="btn-ghost !text-xs" onClick={async () => { await updateStaged({ ...q, status: 'REJECTED' }); await audit('IMPORT_QUESTION_REJECTED', q.id); reload(); }}>Reject</button>}
             {blockReason(q) && q.status === 'NEEDS_REVIEW' && !q.correctLabels.length && q.type !== 'SHORT_ANSWER' && (
               <button className="btn-ghost !text-xs" disabled={asking === q.id} onClick={() => askAI(q)}>
                 {asking === q.id ? 'Asking…' : 'Ask AI suggestion'}
               </button>)}
-            <button className="btn-ghost !text-xs !text-red-600" onClick={() => { if (confirm('Delete this staged row? It never reaches the bank.')) { removeStaged(q.id); audit('IMPORT_QUESTION_DELETED', q.id); reload(); } }}>Delete</button>
+            <button className="btn-ghost !text-xs !text-red-600" onClick={async () => { if (confirm('Delete this staged row? It never reaches the bank.')) { await removeStaged(q.id); await audit('IMPORT_QUESTION_DELETED', q.id); reload(); } }}>Delete</button>
           </>}
         </div>
       </div>
     </Card>)}
 
     {detail && <DetailModal q={detail} onClose={() => setDetail(null)} />}
-    {editing && <EditModal q={editing} onClose={() => setEditing(null)} onSave={(q) => {
+    {editing && <EditModal q={editing} onClose={() => setEditing(null)} onSave={async (q) => {
       const next: StagedQuestion = { ...q };
       // Staff-entered answer clears an earlier deferral and counts as HIGH-confidence.
       const staffAnswered = next.type === 'SHORT_ANSWER'
@@ -314,8 +325,8 @@ export default function ImportReview() {
       if (next.status === 'READY' || next.status === 'NEEDS_REVIEW') {
         next.status = (errs.length || blockReason(next)) ? 'NEEDS_REVIEW' : 'READY';
       }
-      updateStaged(next);
-      audit('IMPORT_QUESTION_EDITED', q.id);
+      await updateStaged(next);
+      await audit('IMPORT_QUESTION_EDITED', q.id);
       setEditing(null); reload();
     }} />}
   </Shell>;

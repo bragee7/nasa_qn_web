@@ -1,28 +1,34 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useSession } from '../../services/auth';
-import { db } from '../../lib/store';
+import { repo } from '../../lib/repo';
 import { hashPassword, fmtClock } from '../../lib/utils';
-import { buildAttempt, scoreAttempt, logEvent } from '../../services/engine';
+import { buildAttempt, scoreAttempt, logEvent, submitAttemptServer } from '../../services/engine';
 import { Card } from '../../components/ui';
 import type { Attempt, Exam, Question } from '../../types/models';
 
 // IndexedDB-lite: localStorage outbox for offline answers
 const OUTBOX = (aid:string)=>`examora_outbox_${aid}`;
 function queueAnswer(aid:string, qid:string, val:any){ const o=JSON.parse(localStorage.getItem(OUTBOX(aid))||'{}'); o[qid]={val,opId:crypto.randomUUID(),t:Date.now()}; localStorage.setItem(OUTBOX(aid),JSON.stringify(o)); }
-function flushOutbox(a:Attempt){ const o=JSON.parse(localStorage.getItem(OUTBOX(a.id))||'{}'); let changed=false;
+async function flushOutbox(a:Attempt){ const o=JSON.parse(localStorage.getItem(OUTBOX(a.id))||'{}'); let changed=false;
   for(const [qid,r] of Object.entries<any>(o)){ if(a.answers[qid]!==r.val){ a.answers[qid]=r.val; changed=true; } }
-  if(changed){ a.updatedAt=Date.now(); db.put('attempts',a); } localStorage.setItem(OUTBOX(a.id),'{}'); }
+  if(changed){ a.updatedAt=Date.now(); await repo.put('attempts',a); } localStorage.setItem(OUTBOX(a.id),'{}'); }
 
 export default function ExamTake(){
   const { examId } = useParams(); const nav=useNavigate(); const { session } = useSession();
   const [phase,setPhase]=useState<'gate'|'exam'>('gate');
   const [pw,setPw]=useState(''); const [err,setErr]=useState('');
+  const [exam,setExam]=useState<Exam|null>(null);
+  const [bank,setBank]=useState<Question[]>([]);
+  const [loaded,setLoaded]=useState(false);
   const [attempt,setAttempt]=useState<Attempt|null>(null);
   const [idx,setIdx]=useState(0); const [saveState,setSaveState]=useState<'saved'|'saving'|'offline'>('saved');
   const [online,setOnline]=useState(navigator.onLine); const [left,setLeft]=useState(0);
-  const exam=db.get<Exam>('exams',examId!);
-  const bank=db.all<Question>('questionBank');
+  useEffect(()=>{ (async()=>{
+    setExam(await repo.get<Exam>('exams',examId!) ?? null);
+    setBank(await repo.all<Question>('questionBank'));
+    setLoaded(true);
+  })(); },[examId]);
   const attemptRef=useRef<Attempt|null>(null); attemptRef.current=attempt;
 
   async function start(){
@@ -33,10 +39,11 @@ export default function ExamTake(){
     if(nowT<exam.startAt){ setErr('Exam has not started yet'); return; }
     if(nowT>exam.endAt){ setErr('Exam window has ended'); return; }
     // idempotent: reuse active attempt (no duplicate on refresh)
-    let a=db.all<Attempt>('attempts').find(x=>x.examId===exam.id&&x.uid===session.uid&&x.status==='IN_PROGRESS');
-    if(!a && exam.oneAttemptOnly && db.all<Attempt>('attempts').some(x=>x.examId===exam.id&&x.uid===session.uid&&x.status!=='IN_PROGRESS')){ setErr('Already attempted'); return; }
-    if(!a){ a=buildAttempt(exam,bank,session.studentId!,session.uid); db.put('attempts',a); logEvent(a.id,exam.id,a.studentId,'EXAM_STARTED'); }
-    else { a.refreshCount++; a.updatedAt=Date.now(); db.put('attempts',a); logEvent(a.id,exam.id,a.studentId,'EXAM_RESUMED',{reason:'reopen'}); }
+    const mine=await repo.query<Attempt>('attempts',x=>x.examId===exam.id&&x.uid===session.uid);
+    let a=mine.find(x=>x.status==='IN_PROGRESS');
+    if(!a && exam.oneAttemptOnly && mine.some(x=>x.status!=='IN_PROGRESS')){ setErr('Already attempted'); return; }
+    if(!a){ a=buildAttempt(exam,bank,session.studentId!,session.uid); await repo.put('attempts',a); logEvent(a.id,exam.id,a.studentId,'EXAM_STARTED'); }
+    else { a.refreshCount++; a.updatedAt=Date.now(); await repo.put('attempts',a); logEvent(a.id,exam.id,a.studentId,'EXAM_RESUMED',{reason:'reopen'}); }
     setAttempt(a); setIdx(a.currentIndex||0); setPhase('exam');
     try{ await document.documentElement.requestFullscreen(); logEvent(a.id,exam.id,a.studentId,'FULLSCREEN_ENTER'); }catch{}
   }
@@ -44,8 +51,8 @@ export default function ExamTake(){
   // timer (server deadline authoritative) + auto-submit
   useEffect(()=>{
     if(phase!=='exam'||!attempt) return;
-    const t=setInterval(()=>{
-      const a=db.get<Attempt>('attempts',attempt.id);
+    const t=setInterval(async ()=>{
+      const a=await repo.get<Attempt>('attempts',attempt.id);
       if(!a) return;
       const rem=Math.max(0,(a.serverDeadline??(a.startedAt+60*60000))-Date.now());
       setLeft(rem);
@@ -62,8 +69,8 @@ export default function ExamTake(){
     const onFs=()=>{ if(!document.fullscreenElement) logEvent(attempt.id,exam.id,attempt.studentId,'FULLSCREEN_EXIT'); else logEvent(attempt.id,exam.id,attempt.studentId,'FULLSCREEN_ENTER'); };
     const onVis=()=>{ logEvent(attempt.id,exam.id,attempt.studentId,document.hidden?'TAB_SWITCH':'TAB_RETURN',{visibilityState:document.visibilityState}); };
     const onOff=()=>{ setOnline(false); setSaveState('offline'); logEvent(attempt.id,exam.id,attempt.studentId,'NETWORK_DISCONNECTED'); };
-    const onOn=()=>{ setOnline(true); const a=db.get<Attempt>('attempts',attempt.id); if(a){flushOutbox(a); setAttempt({...a});} logEvent(attempt.id,exam.id,attempt.studentId,'NETWORK_RECONNECTED'); setSaveState('saved'); };
-    const onUnload=()=>{ logEvent(attempt.id,exam.id,attempt.studentId,'BROWSER_REFRESH'); const a=db.get<Attempt>('attempts',attempt.id); if(a){a.currentIndex=idx; a.updatedAt=Date.now(); db.put('attempts',a);} };
+    const onOn=async()=>{ setOnline(true); const a=await repo.get<Attempt>('attempts',attempt.id); if(a){await flushOutbox(a); setAttempt({...a});} logEvent(attempt.id,exam.id,attempt.studentId,'NETWORK_RECONNECTED'); setSaveState('saved'); };
+    const onUnload=()=>{ logEvent(attempt.id,exam.id,attempt.studentId,'BROWSER_REFRESH'); void (async()=>{ const a=await repo.get<Attempt>('attempts',attempt.id); if(a){a.currentIndex=idx; a.updatedAt=Date.now(); await repo.put('attempts',a);} })(); };
     document.addEventListener('fullscreenchange',onFs); document.addEventListener('visibilitychange',onVis);
     window.addEventListener('offline',onOff); window.addEventListener('online',onOn); window.addEventListener('beforeunload',onUnload);
     return ()=>{ document.removeEventListener('fullscreenchange',onFs); document.removeEventListener('visibilitychange',onVis); window.removeEventListener('offline',onOff); window.removeEventListener('online',onOn); window.removeEventListener('beforeunload',onUnload); };
@@ -81,30 +88,40 @@ export default function ExamTake(){
     }).filter(Boolean) as {qid:string;text:string;type:string;marks:number;options:string[];map:number[]}[];
   },[attempt,bank,exam]);
 
-  function answer(qid:string, val:any, map?:number[]){
+  async function answer(qid:string, val:any, map?:number[]){
     if(!attempt) return;
     // translate displayed index -> original index for MCQ_SINGLE
     let stored=val; if(map&&typeof val==='number') stored=map[val];
     setSaveState('saving');
     queueAnswer(attempt.id,qid,stored);
-    if(navigator.onLine){ const a=db.get<Attempt>('attempts',attempt.id)!; flushOutbox(a); a.currentIndex=idx; a.updatedAt=Date.now(); db.put('attempts',a); setAttempt({...a}); setSaveState('saved'); }
-    else { const a=db.get<Attempt>('attempts',attempt.id)!; a.currentIndex=idx; db.put('attempts',a); setAttempt({...a}); setSaveState('offline'); }
+    const a=await repo.get<Attempt>('attempts',attempt.id)!;
+    if(!a) return;
+    if(navigator.onLine){ await flushOutbox(a); a.currentIndex=idx; a.updatedAt=Date.now(); await repo.put('attempts',a); setAttempt({...a}); setSaveState('saved'); }
+    else { a.currentIndex=idx; await repo.put('attempts',a); setAttempt({...a}); setSaveState('offline'); }
   }
 
-  function submit(kind:'MANUAL'|'AUTO'){
-    const a=attemptRef.current?db.get<Attempt>('attempts',attemptRef.current.id):null;
-    if(!a||!exam||a.status!=='IN_PROGRESS') return;
-    flushOutbox(a);
+  async function submit(kind:'MANUAL'|'AUTO'){
+    const cur=attemptRef.current?await repo.get<Attempt>('attempts',attemptRef.current.id):null;
+    if(!cur||!exam||cur.status!=='IN_PROGRESS') return;
+    await flushOutbox(cur);
     // authoritative deadline check
-    if(kind==='MANUAL'&&Date.now()>a.serverDeadline) kind='AUTO';
-    const r=scoreAttempt(exam,bank,a.answers);
-    a.status=kind==='AUTO'?'AUTO_SUBMITTED':'SUBMITTED'; a.submissionType=kind; a.submittedAt=Date.now();
-    a.score=r.score; a.totalMarks=r.total; a.pct=r.pct; a.updatedAt=Date.now(); db.put('attempts',a);
-    logEvent(a.id,exam.id,a.studentId,kind==='AUTO'?'AUTO_SUBMIT':'MANUAL_SUBMIT');
+    if(kind==='MANUAL'&&Date.now()>cur.serverDeadline) kind='AUTO';
+    // Server-side scoring when connected (RPC hides answers + scores authoritatively);
+    // fall back to local scoring offline / unconfigured.
+    const remote = await submitAttemptServer(cur.id, cur.answers);
+    if(remote){
+      logEvent(cur.id,exam.id,cur.studentId,kind==='AUTO'?'AUTO_SUBMIT':'MANUAL_SUBMIT');
+    } else {
+      const r=scoreAttempt(exam,bank,cur.answers);
+      cur.status=kind==='AUTO'?'AUTO_SUBMITTED':'SUBMITTED'; cur.submissionType=kind; cur.submittedAt=Date.now();
+      cur.score=r.score; cur.totalMarks=r.total; cur.pct=r.pct; cur.updatedAt=Date.now(); await repo.put('attempts',cur);
+      logEvent(cur.id,exam.id,cur.studentId,kind==='AUTO'?'AUTO_SUBMIT':'MANUAL_SUBMIT');
+    }
     try{ if(document.fullscreenElement) document.exitFullscreen(); }catch{}
-    nav(`/student/result/${a.id}`);
+    nav(`/student/result/${cur.id}`);
   }
 
+  if(!loaded) return <div className="p-10">Loading…</div>;
   if(!exam) return <div className="p-10">Exam not found</div>;
   if(phase==='gate') return <div className="max-w-xl mx-auto px-4 py-10"><Card>
     <h1 className="text-xl font-bold">Ready to begin</h1><p className="font-semibold mt-2">{exam.title}</p>
@@ -140,7 +157,7 @@ export default function ExamTake(){
           {cur.type==='TRUE_FALSE'&&null}
         </div>
         <div className="flex justify-between mt-6"><button className="btn-ghost" disabled={idx===0} onClick={()=>setIdx(i=>i-1)}>Previous</button>
-        {idx<safeQs.length-1?<button className="btn-primary" onClick={()=>{setIdx(i=>i+1); const a=db.get<Attempt>('attempts',attempt!.id)!; a.currentIndex=idx+1; db.put('attempts',a);}}>Next</button>
+        {idx<safeQs.length-1?<button className="btn-primary" onClick={async()=>{setIdx(i=>i+1); const a=await repo.get<Attempt>('attempts',attempt!.id)!; if(a){a.currentIndex=idx+1; await repo.put('attempts',a);}}}>Next</button>
         :<button className="btn-danger" onClick={()=>{if(confirm(`Submit exam? Answered ${answered}/${safeQs.length}`)) submit('MANUAL');}}>Submit</button>}</div>
       </>}</Card>
       <Card><p className="font-bold text-sm mb-2">Questions</p>

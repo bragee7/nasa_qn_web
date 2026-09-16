@@ -2,12 +2,13 @@
 // actions. Failed/cancelled imports can be retried (re-upload) or securely
 // deleted; completed imports keep their bank questions even if the record is
 // removed (provenance lives on the bank rows via sourceImportId).
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Shell, SideLink } from '../../components/layout';
 import { Card, Empty } from '../../components/ui';
 import { useSession } from '../../services/auth';
 import { auditImport, canManageQuestions, deleteImport, listImports } from '../../services/aiImport/importStore';
+import type { ImportRecord } from '../../services/aiImport/types';
 
 const pill: Record<string, string> = {
   UPLOADED: 'bg-slate-200 text-slate-600', PROCESSING: 'bg-amber-100 text-amber-800',
@@ -18,12 +19,12 @@ const pill: Record<string, string> = {
 
 export default function ImportHistory() {
   const { session } = useSession();
-  const [tick, setTick] = useState(0);
-  void tick;
+  const [rows,setRows]=useState<ImportRecord[]>([]);
+  const refresh=async()=>setRows(await listImports());
+  useEffect(()=>{ refresh(); },[]);
   if (!canManageQuestions(session?.role)) {
     return <Shell sidebar={<></>}><Card><b>Access denied.</b><p className="text-sm">Question imports are restricted to Super Admins.</p></Card></Shell>;
   }
-  const rows = listImports();
   return <Shell sidebar={<>
     <SideLink to="/admin/questions" label="Question Bank" />
     <SideLink to="/admin/questions/import" label="New Import" />
@@ -52,11 +53,11 @@ export default function ImportHistory() {
           <Link className="btn-primary !text-xs" to={`/admin/questions/import/${r.id}`}>Open review</Link>}
         {r.status === 'COMPLETED' &&
           <Link className="btn-ghost !text-xs" to={`/admin/questions/import/${r.id}`}>View</Link>}
-        <button className="btn-ghost !text-xs !text-red-600" onClick={() => {
+        <button className="btn-ghost !text-xs !text-red-600" onClick={async() => {
           if (!confirm(`Delete import record for “${r.fileName}”? Staged rows are removed. Questions already imported into the bank are kept.`)) return;
-          auditImport('IMPORT_CANCELLED', session!.uid, session!.email, r.id, { deletedFromHistory: true });
-          deleteImport(r.id);
-          setTick(t => t + 1);
+          await auditImport('IMPORT_CANCELLED', session!.uid, session!.email, r.id, { deletedFromHistory: true });
+          await deleteImport(r.id);
+          refresh();
         }}>Delete</button>
       </div>
     </Card>)}

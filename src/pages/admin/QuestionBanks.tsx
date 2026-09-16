@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Shell, SideLink } from '../../components/layout';
 import { Card, Empty } from '../../components/ui';
-import { db } from '../../lib/store';
 import { DEPT_OPTIONS, fmtDateTime } from '../../lib/utils';
+import { repo } from '../../lib/repo';
+import { audit } from '../../lib/audit';
 import { useSession } from '../../services/auth';
-import { allBanks, archiveBank, createBank, deleteBank, duplicateBank, getBank, recomputeCount, type BankInput } from '../../services/banks';
+import { allBanks, archiveBank, createBank, deleteBank, duplicateBank, getBank, type BankInput } from '../../services/banks';
 import type { QuestionBank } from '../../types/models';
 
 export default function QuestionBanks() {
@@ -13,40 +14,37 @@ export default function QuestionBanks() {
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('All');
   const [sort, setSort] = useState('recent');
-  const [list, setList] = useState<QuestionBank[]>(() => allBanks());
+  const [list, setList] = useState<QuestionBank[]>([]);
   const [form, setForm] = useState<BankInput & { name: string }>({ name: '', description: '', subject: 'General', year: 'all', department: [], section: 'all' });
-  const refresh = () => setList(allBanks());
-  function audit(action: string, id: string, meta: Record<string, any> = {}) {
-    const l = db.all<any>('auditLogs');
-    l.push({ id: crypto.randomUUID(), adminId: session!.uid, adminEmail: session!.email, action, targetType: 'questionBank', targetId: id, timestamp: Date.now(), metadata: meta });
-    localStorage.setItem('examora_auditLogs', JSON.stringify(l));
-  }
+  const refresh = async () => setList(await allBanks());
+  useEffect(()=>{ refresh(); },[]);
   const nameTaken = form.name.trim() !== '' && list.some(b => b.name.toLowerCase() === form.name.trim().toLowerCase());
-  function save() {
+  async function save() {
     if (!form.name.trim()) return alert('Bank name is required.');
-    const b = createBank(form, session!.uid);
-    audit('QUESTION_BANK_CREATED', b.id, { name: b.name });
+    const b = await createBank(form, session!.uid);
+    await audit('QUESTION_BANK_CREATED', b.id, { name: b.name },'questionBank');
     setForm({ name: '', description: '', subject: 'General', year: 'all', department: [], section: 'all' });
     refresh();
   }
-  function dup(id: string) {
-    const src = getBank(id); if (!src) return;
-    const copy = duplicateBank(src, session!.uid);
-    audit('QUESTION_BANK_DUPLICATED', copy.id, { from: id, name: copy.name });
+  async function dup(id: string) {
+    const src = await getBank(id); if (!src) return;
+    const copy = await duplicateBank(src, session!.uid);
+    await audit('QUESTION_BANK_DUPLICATED', copy.id, { from: id, name: copy.name },'questionBank');
     refresh();
   }
-  function toggleArchive(id: string) {    const b = getBank(id); if (!b) return;
-    if (b.status === 'ACTIVE') archiveBank(id);
-    else db.put('questionBanks', { ...b, status: 'ACTIVE' as const, updatedAt: Date.now() });
-    audit(b.status === 'ACTIVE' ? 'QUESTION_BANK_ARCHIVED' : 'QUESTION_BANK_UPDATED', id, { status: b.status === 'ACTIVE' ? 'ARCHIVED' : 'ACTIVE' });
+  async function toggleArchive(id: string) {
+    const b = await getBank(id); if (!b) return;
+    if (b.status === 'ACTIVE') await archiveBank(id);
+    else await repo.put('questionBanks', { ...b, status: 'ACTIVE' as const, updatedAt: Date.now() });
+    await audit(b.status === 'ACTIVE' ? 'QUESTION_BANK_ARCHIVED' : 'QUESTION_BANK_UPDATED', id, { status: b.status === 'ACTIVE' ? 'ARCHIVED' : 'ACTIVE' },'questionBank');
     refresh();
   }
-  function del(id: string) {
-    const b = getBank(id); if (!b) return;
+  async function del(id: string) {
+    const b = await getBank(id); if (!b) return;
     if (!confirm(`Delete bank “${b.name}”? Its ${b.questionCount} question(s) are KEPT (moved to No bank). This cannot be undone.`)) return;
-    const r = deleteBank(id);
+    const r = await deleteBank(id);
     if (!r.ok) { alert(r.reason); return; }
-    audit('QUESTION_BANK_DELETED', id, { name: b.name, unassigned: r.unassigned });
+    await audit('QUESTION_BANK_DELETED', id, { name: b.name, unassigned: r.unassigned },'questionBank');
     refresh();
   }
   const filtered = list

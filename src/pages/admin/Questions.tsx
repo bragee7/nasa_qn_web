@@ -1,20 +1,27 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Shell, SideLink } from '../../components/layout';
 import { Card, Empty } from '../../components/ui';
-import { db } from '../../lib/store';
 import { uid } from '../../lib/utils';
+import { repo } from '../../lib/repo';
+import { audit } from '../../lib/audit';
 import { useSession } from '../../services/auth';
 import { allBanks, deleteQuestions, getBank, recomputeCount } from '../../services/banks';
+import type { QuestionBank } from '../../types/models';
 export default function Questions(){
   const { session }=useSession();
   const [q,setQ]=useState(''); const [subj,setSubj]=useState('All'); const [ans,setAns]=useState('All'); const [bankF,setBankF]=useState('All');
   const [sel,setSel]=useState<Set<string>>(new Set());
-  const [banks]=useState(()=>allBanks(false));
-  const [list,setList]=useState(()=>db.all<any>('questionBank'));
+  const [banks,setBanks]=useState<QuestionBank[]>([]);
+  const [bankNames,setBankNames]=useState<Record<string,string>>({});
+  const [list,setList]=useState<any[]>([]);
   const [form,setForm]=useState({text:'',type:'MCQ_SINGLE',subject:'DBMS',topic:'General',difficulty:'Medium',o1:'',o2:'',o3:'',o4:'',correct:'0',marks:2,bankId:''});
-  const refresh=()=>setList([...db.all<any>('questionBank')]);
-  function audit(action:string,id:string,meta:Record<string,any>={}){ const l=db.all<any>('auditLogs'); l.push({id:crypto.randomUUID(),adminId:session!.uid,adminEmail:session!.email,action,targetType:'question',targetId:id,timestamp:Date.now(),metadata:meta}); localStorage.setItem('examora_auditLogs',JSON.stringify(l)); }
+  const refresh=async()=>{
+    setList(await repo.all<any>('questionBank'));
+    const bs=await allBanks(false); setBanks(bs);
+    const names:Record<string,string>={}; for(const b of bs) names[b.id]=b.name; setBankNames(names);
+  };
+  useEffect(()=>{ refresh(); },[]);
   const LETTERS='ABCDE';
   function isCorrect(x:any,i:number):boolean{
     if(x.type==='TRUE_FALSE') return x.correctAnswer===(i===0);
@@ -22,36 +29,36 @@ export default function Questions(){
     return x.correctAnswer===i;
   }
   // Quick-set the correct answer A/B/C/D (admin assigns after import).
-  function setAnswer(x:any,i:number){
+  async function setAnswer(x:any,i:number){
     let value:any=i;
     if(x.type==='TRUE_FALSE') value=(i===0);
     else if(x.type==='MCQ_MULTIPLE'){ const cur=Array.isArray(x.correctAnswer)?[...x.correctAnswer]:[]; const at=cur.indexOf(i); if(at>=0)cur.splice(at,1); else cur.push(i); value=cur.sort(); }
-    db.put('questionBank',{...x,correctAnswer:value,needsAnswer:false,updatedAt:Date.now()});
-    audit('QUESTION_ANSWER_SET',x.id,{type:x.type,value}); refresh();
+    await repo.put('questionBank',{...x,correctAnswer:value,needsAnswer:false,updatedAt:Date.now()});
+    await audit('QUESTION_ANSWER_SET',x.id,{type:x.type,value},'question'); refresh();
   }
-  function setShortAnswer(x:any,v:string){
-    db.put('questionBank',{...x,correctAnswer:v,needsAnswer:false,updatedAt:Date.now()});
-    audit('QUESTION_ANSWER_SET',x.id,{type:x.type}); refresh();
+  async function setShortAnswer(x:any,v:string){
+    await repo.put('questionBank',{...x,correctAnswer:v,needsAnswer:false,updatedAt:Date.now()});
+    await audit('QUESTION_ANSWER_SET',x.id,{type:x.type},'question'); refresh();
   }
   function toggleSel(id:string){ setSel(prev=>{ const n=new Set(prev); if(n.has(id))n.delete(id); else n.add(id); return n; }); }
-  function bulkDel(ids:string[]){
+  async function bulkDel(ids:string[]){
     if(!ids.length) return;
     if(!confirm(`Permanently delete ${ids.length} selected question(s)? This cannot be undone.`)) return;
-    const r=deleteQuestions(ids);
-    for(const id of ids) audit('QUESTION_DELETED',id,{bulk:true});
+    const r=await deleteQuestions(ids);
+    for(const id of ids) await audit('QUESTION_DELETED',id,{bulk:true},'question');
     setSel(new Set()); refresh();
     alert(`Deleted ${r.deleted} question(s).`);
   }
-  function save(){
+  async function save(){
     if(form.text.length<5) return alert('Question text too short');
     const opts=[form.o1,form.o2,form.o3,form.o4].filter(o=>o.trim());
     const row:any={id:uid('q'),text:form.text,type:form.type,subject:form.subject,topic:form.topic,difficulty:form.difficulty,options:form.type==='TRUE_FALSE'?['True','False']:opts,correctAnswer:form.type==='TRUE_FALSE'?(form.correct==='0'):Number(form.correct),marks:Number(form.marks),status:'active',createdBy:session!.uid,createdAt:Date.now(),updatedAt:Date.now()};
     if(form.bankId) row.questionBankId=form.bankId;
-    db.put('questionBank',row);
-    if(form.bankId) recomputeCount(form.bankId);
-    audit('QUESTION_CREATED','new'); setForm({text:'',type:'MCQ_SINGLE',subject:'DBMS',topic:'General',difficulty:'Medium',o1:'',o2:'',o3:'',o4:'',correct:'0',marks:2,bankId:''}); refresh();
+    await repo.put('questionBank',row);
+    if(form.bankId) await recomputeCount(form.bankId);
+    await audit('QUESTION_CREATED','new',{},'question'); setForm({text:'',type:'MCQ_SINGLE',subject:'DBMS',topic:'General',difficulty:'Medium',o1:'',o2:'',o3:'',o4:'',correct:'0',marks:2,bankId:''}); refresh();
   }
-  const bankName=(id?:string)=>{ if(!id) return '—'; const b=getBank(id); return b?b.name:'(deleted bank)'; };
+  const bankName=(id?:string)=>{ if(!id) return '—'; return bankNames[id] ?? '(deleted bank)'; };
   const filtered=list.filter(x=>(q===''||x.text.toLowerCase().includes(q.toLowerCase()))&&(subj==='All'||x.subject===subj)&&(ans==='All'||(ans==='Missing'?x.correctAnswer==null:x.correctAnswer!=null))&&(bankF==='All'||(bankF==='None'?!x.questionBankId:x.questionBankId===bankF)));
   return <Shell sidebar={<><SideLink to="/admin/question-banks" label="Question Banks" /><SideLink to="/admin/questions" label="All Questions" /><SideLink to="/admin/questions/import" label="Import File" /><SideLink to="/admin/imports" label="Import History" /><SideLink to="/admin/exams" label="Exams" /><SideLink to="/admin/dashboard" label="Dashboard" /></>}>
     <Card><div className="flex flex-wrap gap-2 items-center">
@@ -86,8 +93,8 @@ export default function Questions(){
       {x.type!=='SHORT_ANSWER'&&<div className="flex gap-1 mt-1 items-center flex-wrap"><span className="text-xs text-slate-500">Set answer:</span>{(x.options||[]).map((_:string,i:number)=><button key={i} className={`btn-ghost !text-xs !px-2 ${isCorrect(x,i)?'!bg-emerald-100 !text-emerald-800 font-bold':''}`} onClick={()=>setAnswer(x,i)}>{LETTERS[i]}</button>)}</div>}
       </div>
       <div className="flex flex-col gap-1 shrink-0">
-      <button className="btn-ghost !text-xs" onClick={()=>{db.put('questionBank',{...x,text:x.text+' (copy)',id:uid('q')}); refresh();}}>Duplicate</button>
-      <button className="btn-ghost !text-xs" onClick={()=>{db.put('questionBank',{...x,status:x.status==='active'?'archived':'active'}); audit('QUESTION_ARCHIVED',x.id); refresh();}}>{x.status==='active'?'Archive':'Restore'}</button></div></div></Card>)}
+      <button className="btn-ghost !text-xs" onClick={async()=>{await repo.put('questionBank',{...x,text:x.text+' (copy)',id:uid('q')}); refresh();}}>Duplicate</button>
+      <button className="btn-ghost !text-xs" onClick={async()=>{await repo.put('questionBank',{...x,status:x.status==='active'?'archived':'active'}); await audit('QUESTION_ARCHIVED',x.id,{},'question'); refresh();}}>{x.status==='active'?'Archive':'Restore'}</button></div></div></Card>)}
   </Shell>;
 }
 

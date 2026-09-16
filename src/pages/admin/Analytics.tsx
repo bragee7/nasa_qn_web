@@ -1,9 +1,16 @@
+import { useState, useEffect } from 'react';
 import { Shell, SideLink } from '../../components/layout';
 import { Card, Empty } from '../../components/ui';
-import { db } from '../../lib/store';
+import { repo } from '../../lib/repo';
 export default function Analytics(){
-  const attempts=db.all<any>('attempts').filter(a=>a.status!=='IN_PROGRESS');
-  const exams=db.all<any>('exams'); const bank=db.all<any>('questionBank');
+  const [attempts,setAttempts]=useState<any[]>([]);
+  const [exams,setExams]=useState<any[]>([]);
+  const [bank,setBank]=useState<any[]>([]);
+  useEffect(()=>{ (async()=>{
+    setAttempts((await repo.all<any>('attempts')).filter(a=>a.status!=='IN_PROGRESS'));
+    setExams(await repo.all<any>('exams'));
+    setBank(await repo.all<any>('questionBank'));
+  })(); },[]);
   if(attempts.length===0) return <Shell sidebar={<><SideLink to="/admin/analytics" label="Analytics" /></>}><Empty title="No data yet." sub="Analytics appear after submissions." /></Shell>;
   const avg=Math.round(attempts.reduce((s,a)=>s+(a.pct||0),0)/attempts.length);
   const passed=attempts.filter(a=>(a.pct||0)>=40).length;

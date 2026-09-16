@@ -2,10 +2,12 @@ import { useState } from 'react';
 import * as XLSX from 'xlsx';
 import { Shell, SideLink } from '../../components/layout';
 import { Card } from '../../components/ui';
-import { db, sha } from '../../lib/store';
-import { useSession } from '../../services/auth';
+import { sha } from '../../lib/store';
+import { repo } from '../../lib/repo';
+import { audit } from '../../lib/audit';
+import { isSupabaseConfigured } from '../../lib/supabase';
+import { DEFAULT_STUDENT_PASSWORD } from '../../config/app';
 export default function ImportStudents(){
-  const { session }=useSession();
   const [rows,setRows]=useState<any[]>([]); const [errors,setErrors]=useState<string[]>([]); const [done,setDone]=useState('');
   async function onFile(f:File){
     const buf=await f.arrayBuffer(); const wb=XLSX.read(buf); const ws=wb.Sheets[wb.SheetNames[0]];
@@ -37,10 +39,17 @@ export default function ImportStudents(){
     setRows(ok); setErrors(errs);
   }
   async function confirm(){
-    for(const r of rows){ db.put('students',{...r,uid:'u_'+r.id,status:'active',createdAt:Date.now(),updatedAt:Date.now()});
-      if(!db.all<any>('users').some(u=>u.email===r.email)) db.put('users',{uid:'u_'+r.id,email:r.email,passHash:await sha('Student@123'),role:'student',studentId:r.id,name:r.name}); }
-    const l=db.all<any>('auditLogs'); l.push({id:crypto.randomUUID(),adminId:session!.uid,adminEmail:session!.email,action:'STUDENT_IMPORTED',targetType:'students',targetId:`batch:${rows.length}`,timestamp:Date.now(),metadata:{count:rows.length}}); localStorage.setItem('examora_auditLogs',JSON.stringify(l));
-    setDone(`Imported ${rows.length} students. Default password: Student@123`); setRows([]);
+    for(const r of rows){
+      await repo.put('students',{...r,uid:'u_'+r.id,status:'active',createdAt:Date.now(),updatedAt:Date.now()});
+      if (!isSupabaseConfigured) {
+        if(!(await repo.all<any>('users')).some(u=>u.email===r.email)) await repo.put('users',{uid:'u_'+r.id,email:r.email,passHash:await sha(DEFAULT_STUDENT_PASSWORD),role:'student',studentId:r.id,name:r.name});
+      }
+    }
+    await audit('STUDENT_IMPORTED',`batch:${rows.length}`,{count:rows.length},'students');
+    setDone(isSupabaseConfigured
+      ? `Imported ${rows.length} students. Create their logins in Supabase Dashboard → Authentication → Add user (bulk invite).`
+      : `Imported ${rows.length} students. Default password: ${DEFAULT_STUDENT_PASSWORD}`);
+    setRows([]);
   }
   return <Shell sidebar={<><SideLink to="/admin/students" label="Students" /><SideLink to="/admin/dashboard" label="Dashboard" /></>}>
     <Card><b>Bulk import students (.xlsx)</b><p className="text-sm text-slate-500">Columns: Register No, Name, Email, Department, Year, Section</p>

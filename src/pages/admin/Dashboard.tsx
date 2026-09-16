@@ -1,18 +1,22 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Shell, SideLink } from '../../components/layout';
 import { Card, Empty } from '../../components/ui';
-import { db, sha } from '../../lib/store';
-import { useSession } from '../../services/auth';
+import { sha } from '../../lib/store';
+import { repo } from '../../lib/repo';
+import { isSupabaseConfigured } from '../../lib/supabase';
+import { audit } from '../../lib/audit';
+import { DEFAULT_STUDENT_PASSWORD } from '../../config/app';
 
 export default function AdminDashboard(){
-  const { session } = useSession();
   const [q,setQ]=useState('');
   const [dept,setDept]=useState('All'); const [year,setYear]=useState('All');
   const [sel,setSel]=useState<Set<string>>(new Set());
-  const [list,setList]=useState(()=> db.all<any>('students'));
-  const refresh=()=>{ setList([...db.all<any>('students')]); setSel(new Set()); };
-  const attempts=db.all<any>('attempts'); const exams=db.all<any>('exams');
+  const [list,setList]=useState<any[]>([]);
+  const [exams,setExams]=useState<any[]>([]);
+  const [attempts,setAttempts]=useState<any[]>([]);
+  const refresh=async()=>{ setList(await repo.all<any>('students')); setSel(new Set()); };
+  useEffect(()=>{ (async()=>{ refresh(); setExams(await repo.all<any>('exams')); setAttempts(await repo.all<any>('attempts')); })(); },[]);
   const completed=attempts.filter((a:any)=>a.status!=='IN_PROGRESS');
   const avg=completed.length?Math.round(completed.reduce((s:number,a:any)=>s+(a.pct||0),0)/completed.length):0;
 
@@ -22,18 +26,13 @@ export default function AdminDashboard(){
   const [msg,setMsg]=useState(''); const [err,setErr]=useState('');
   const [openAdd,setOpenAdd]=useState(true);
 
-  function audit(action:string,targetId:string,metadata:any={}, targetType='student'){
-    const l=db.all<any>('auditLogs');
-    l.push({id:crypto.randomUUID(),adminId:session!.uid,adminEmail:session!.email,action,targetType,targetId,timestamp:Date.now(),metadata});
-    localStorage.setItem('examora_auditLogs',JSON.stringify(l));
-  }
-  function deleteExam(e:any){
-    const atts=db.all<any>('attempts').filter((a:any)=>a.examId===e.id);
+  async function deleteExam(e:any){
+    const atts=(await repo.all<any>('attempts')).filter((a:any)=>a.examId===e.id);
     const warn=atts.length? ` — ${atts.length} attempt(s) will remain in Results.`:'';
     if(!confirm(`Delete exam "${e.title}" [${e.status}]? Cannot be undone.${warn}`)) return;
-    db.remove('exams', e.id);
-    audit('EXAM_DELETED', e.id, {title:e.title,status:e.status,attempts:atts.length}, 'exam');
-    location.reload();
+    await repo.remove('exams', e.id);
+    await audit('EXAM_DELETED', e.id, {title:e.title,status:e.status,attempts:atts.length}, 'exam');
+    setExams(await repo.all<any>('exams'));
   }
 
   async function handleAdd(){
@@ -42,47 +41,55 @@ export default function AdminDashboard(){
     if(!r) return setErr('Register No is required.');
     if(!n) return setErr('Name is required.');
     if(!e || !e.includes('@')) return setErr('Valid Email is required.');
-    const all=db.all<any>('students');
+    const all=await repo.all<any>('students');
     if(all.some((s:any)=>s.studentId===r || s.id===r)) return setErr(`Register No "${r}" already exists.`);
     if(all.some((s:any)=>s.email.toLowerCase()===e)) return setErr(`Email "${e}" already exists.`);
     const rec:any={ id:r, studentId:r, name:n, email:e, department:dpt, year:Number(yr), section:sec||'A', status:'active', createdAt:Date.now(), updatedAt:Date.now(), uid:'u_'+r };
-    db.put('students', rec);
-    if(!db.all<any>('users').some((u:any)=>u.email.toLowerCase()===e)){
-      db.put('users',{uid:'u_'+r,email:e,passHash:await sha('Student@123'),role:'student',studentId:r,name:n});
+    await repo.put('students', rec);
+    if (!isSupabaseConfigured) {
+      if(!(await repo.all<any>('users')).some((u:any)=>u.email.toLowerCase()===e)){
+        await repo.put('users',{uid:'u_'+r,email:e,passHash:await sha(DEFAULT_STUDENT_PASSWORD),role:'student',studentId:r,name:n});
+      }
+      setMsg(`Added ${n} (${r}) — default password: ${DEFAULT_STUDENT_PASSWORD}`);
+    } else {
+      setMsg(`Added ${n} (${r}) — now create the login in Supabase Dashboard → Authentication → Add user (${e}).`);
     }
-    audit('STUDENT_CREATED',r,{source:'dashboard'});
-    setMsg(`Added ${n} (${r}) — default password: Student@123`);
+    await audit('STUDENT_CREATED',r,{source:'dashboard'},'student');
     setReg(''); setName(''); setEmail('');
     refresh();
   }
 
-  function handleDelete(id:string){
+  async function handleDelete(id:string){
     if(!confirm(`Delete student ${id}? This removes the student and login (cannot be undone).`)) return;
-    const s=db.get<any>('students',id);
-    db.remove('students', id);
-    // remove linked user(s)
-    const users=db.all<any>('users');
-    for(const u of users.filter((u:any)=>u.studentId===id || u.uid==='u_'+id)){
-      localStorage.setItem('examora_users', JSON.stringify(db.all<any>('users').filter((x:any)=>x.uid!==u.uid)));
+    const s=await repo.get<any>('students',id);
+    await repo.remove('students', id);
+    if (!isSupabaseConfigured) {
+      for(const u of (await repo.all<any>('users')).filter((u:any)=>u.studentId===id || u.uid==='u_'+id || u.uid===id)){
+        await repo.remove('users', u.uid);
+      }
     }
-    // fallback sync via db.remove if uid id differs
-    try{ const leftover=db.all<any>('users').filter((u:any)=>u.uid===id); for(const u of leftover) db.remove('users', u.uid); }catch{}
-    audit('STUDENT_DELETED', id, {name:s?.name});
+    await audit('STUDENT_DELETED', id, {name:s?.name},'student');
     refresh();
   }
 
-  function bulkDelete(){
+  async function bulkDelete(){
     if(sel.size===0) return;
     if(!confirm(`Delete ${sel.size} selected student(s)? This will also remove their logins.`)) return;
     for(const id of sel){
-      db.remove('students', id);
-      const users=db.all<any>('users');
-      for(const u of users.filter((u:any)=>u.studentId===id || u.uid==='u_'+id)){
-        const cur=db.all<any>('users'); localStorage.setItem('examora_users', JSON.stringify(cur.filter((x:any)=>x.uid!==u.uid)));
+      await repo.remove('students', id);
+      if (!isSupabaseConfigured) {
+        for(const u of (await repo.all<any>('users')).filter((u:any)=>u.studentId===id || u.uid==='u_'+id)){
+          await repo.remove('users', u.uid);
+        }
       }
-      audit('STUDENT_DELETED', id, {bulk:true});
+      await audit('STUDENT_DELETED', id, {bulk:true},'student');
     }
     refresh();
+  }
+
+  async function toggleStatus(s:any){
+    s.status=s.status==='active'?'disabled':'active'; s.updatedAt=Date.now();
+    await repo.put('students',s); await audit('STUDENT_UPDATED',s.id,{status:s.status},'student'); refresh();
   }
 
   const filtered=useMemo(()=> list.filter((s:any)=>
@@ -92,11 +99,14 @@ export default function AdminDashboard(){
   ),[list,q,dept,year]);
 
   const toggleSel=(id:string)=> setSel(prev=>{ const n=new Set(prev); if(n.has(id)) n.delete(id); else n.add(id); return n; });
+  const liveExams=exams.filter((e:any)=>['ACTIVE','SCHEDULED'].includes(e.status));
+  const draftExams=exams.filter((e:any)=>e.status==='DRAFT');
+  const attemptCount=(examId:string)=>attempts.filter((a:any)=>a.examId===examId).length;
 
   return <Shell sidebar={<><SideLink to="/admin/dashboard" label="Dashboard" /><SideLink to="/admin/students" label="Students" /><SideLink to="/admin/exams" label="Exams" /><SideLink to="/admin/questions" label="Question Bank" /><SideLink to="/admin/question-banks" label="Banks" /><SideLink to="/admin/results" label="Results" /><SideLink to="/admin/monitoring" label="Monitoring" /><SideLink to="/admin/analytics" label="Analytics" /><SideLink to="/admin/audit-logs" label="Audit Logs" /><SideLink to="/admin/settings" label="Settings" /></>}>
     <div className="grid sm:grid-cols-4 gap-4">
       <Card><p className="text-xs text-slate-500">TOTAL STUDENTS</p><p className="text-3xl font-extrabold">{list.length}</p></Card>
-      <Card><p className="text-xs text-slate-500">ACTIVE EXAMS</p><p className="text-3xl font-extrabold">{exams.filter((e:any)=>['ACTIVE','SCHEDULED'].includes(e.status)).length}</p></Card>
+      <Card><p className="text-xs text-slate-500">ACTIVE EXAMS</p><p className="text-3xl font-extrabold">{liveExams.length}</p></Card>
       <Card><p className="text-xs text-slate-500">COMPLETED ATTEMPTS</p><p className="text-3xl font-extrabold">{completed.length}</p></Card>
       <Card><p className="text-xs text-slate-500">AVG SCORE</p><p className="text-3xl font-extrabold">{avg}%</p></Card>
     </div>
@@ -110,7 +120,7 @@ export default function AdminDashboard(){
         </div>
       </div>
       {openAdd && <>
-        <p className="text-xs text-slate-500 mt-1">Create one student instantly. Default login password is <code>Student@123</code> (student changes on first login).</p>
+        <p className="text-xs text-slate-500 mt-1">Create one student instantly. Default login password is <code>{DEFAULT_STUDENT_PASSWORD}</code> (student changes on first login).</p>
         <div className="grid sm:grid-cols-3 lg:grid-cols-6 gap-2 mt-3">
           <div><label className="label">Register No *</label><input className="input" placeholder="e.g. 22CSE001" value={reg} onChange={e=>setReg(e.target.value)} /></div>
           <div><label className="label">Name *</label><input className="input" placeholder="Full name" value={name} onChange={e=>setName(e.target.value)} /></div>
@@ -146,7 +156,7 @@ export default function AdminDashboard(){
           <td><input type="checkbox" checked={sel.has(s.id)} onChange={()=>toggleSel(s.id)} /></td>
           <td className="font-mono text-xs">{s.studentId}</td><td>{s.name}</td><td className="text-xs">{s.email}</td><td>{s.department}</td><td>{s.year}</td><td>{s.section}</td><td><span className={`badge ${s.status==='active'?'bg-green-100 text-green-700':'bg-slate-200 text-slate-600'}`}>{s.status}</span></td>
           <td className="flex gap-1 flex-wrap">
-            <button className="btn-ghost !px-2 !py-1 text-xs" onClick={()=>{ s.status=s.status==='active'?'disabled':'active'; s.updatedAt=Date.now(); db.put('students',s); audit('STUDENT_UPDATED',s.id,{status:s.status}); refresh(); }}>{s.status==='active'?'Disable':'Enable'}</button>
+            <button className="btn-ghost !px-2 !py-1 text-xs" onClick={()=>toggleStatus(s)}>{s.status==='active'?'Disable':'Enable'}</button>
             <button className="btn-danger !px-2 !py-1 text-xs" onClick={()=>handleDelete(s.id)}>Delete</button>
           </td>
         </tr>)}</tbody></table>
@@ -155,18 +165,18 @@ export default function AdminDashboard(){
     </Card>
 
     <Card>
-      <div className="flex items-center gap-2"><b>Active exams — easy delete</b><span className="text-xs text-slate-500">({exams.filter((e:any)=>['ACTIVE','SCHEDULED'].includes(e.status)).length} live)</span><Link className="ml-auto btn-ghost !px-3 !py-1 text-xs" to="/admin/exams">Manage exams →</Link></div>
-      {exams.filter((e:any)=>['ACTIVE','SCHEDULED'].includes(e.status)).length===0
+      <div className="flex items-center gap-2"><b>Active exams — easy delete</b><span className="text-xs text-slate-500">({liveExams.length} live)</span><Link className="ml-auto btn-ghost !px-3 !py-1 text-xs" to="/admin/exams">Manage exams →</Link></div>
+      {liveExams.length===0
         ? <p className="text-sm text-slate-500 mt-2">No active exams. Published exams show here with a one-click Delete.</p>
-        : <div className="mt-3 space-y-2">{exams.filter((e:any)=>['ACTIVE','SCHEDULED'].includes(e.status)).map((e:any)=>{
-            const atts=db.all<any>('attempts').filter((a:any)=>a.examId===e.id);
+        : <div className="mt-3 space-y-2">{liveExams.map((e:any)=>{
+            const atts=attemptCount(e.id);
             return <div key={e.id} className="flex items-center gap-2 border rounded-xl px-3 py-2 bg-white">
-              <div className="min-w-0"><p className="text-sm font-semibold truncate">{e.title}</p><p className="text-xs text-slate-500 truncate">{e.status} · {e.subject} · {new Date(e.startAt).toLocaleString()} · {atts.length} attempt(s)</p></div>
+              <div className="min-w-0"><p className="text-sm font-semibold truncate">{e.title}</p><p className="text-xs text-slate-500 truncate">{e.status} · {e.subject} · {new Date(e.startAt).toLocaleString()} · {atts} attempt(s)</p></div>
               <Link className="ml-auto btn-ghost !px-2 !py-1 text-xs shrink-0" to={`/admin/exams/${e.id}`}>Edit</Link>
               <button className="btn-danger !px-3 !py-1 text-xs shrink-0" onClick={()=>deleteExam(e)} title="Delete active exam — cannot be undone">Delete</button>
             </div>;
           })}</div>}
-      {exams.filter((e:any)=>e.status==='DRAFT').length>0 && <div className="mt-3 pt-3 border-t"><p className="text-xs font-semibold text-slate-600">Drafts ({exams.filter((e:any)=>e.status==='DRAFT').length})</p><div className="mt-2 space-y-2">{exams.filter((e:any)=>e.status==='DRAFT').map((e:any)=><div key={e.id} className="flex items-center gap-2 border rounded-xl px-3 py-2 bg-slate-50"><span className="text-sm truncate">{e.title}</span><span className="text-xs text-slate-500">DRAFT</span><button className="ml-auto btn-danger !px-2 !py-1 text-xs" onClick={()=>deleteExam(e)}>Delete</button></div>)}</div></div>}
+      {draftExams.length>0 && <div className="mt-3 pt-3 border-t"><p className="text-xs font-semibold text-slate-600">Drafts ({draftExams.length})</p><div className="mt-2 space-y-2">{draftExams.map((e:any)=><div key={e.id} className="flex items-center gap-2 border rounded-xl px-3 py-2 bg-slate-50"><span className="text-sm truncate">{e.title}</span><span className="text-xs text-slate-500">DRAFT</span><button className="ml-auto btn-danger !px-2 !py-1 text-xs" onClick={()=>deleteExam(e)}>Delete</button></div>)}</div></div>}
     </Card>
   </Shell>;
 }

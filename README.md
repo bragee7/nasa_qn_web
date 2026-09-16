@@ -7,23 +7,23 @@ npm run dev      # http://localhost:5173
 npm test         # vitest
 npm run build    # production build
 ```
-No Firebase project needed to run: app uses local-first store (`localStorage`, same collection layout as Firestore §46). Add real Firebase keys in `.env` to go live.
+No Supabase project needed to run: app uses local-first store (`localStorage`, same collection layout as Postgres §46). Add real Supabase keys in `.env` to go live.
 
-Demo logins (seeded): `admin@college.edu / Admin@123`, `arun@college.edu / Student@123` (exam password `exam123`).
+Demo logins (seeded): `admin@college.edu / Admin@123`, `arun@college.edu / Jjcet@2k26` (exam password `exam123`). Default student password (`DEFAULT_STUDENT_PASSWORD`): `Jjcet@2k26` — applies to seeded, manually added, and Excel-imported students; existing student accounts are reset to it one-time on next boot.
 
-## Firebase setup
-1. Create project, enable Email/Password Auth, Firestore, Storage.
-2. Copy `.env.example` → `.env`, fill `VITE_FIREBASE_*`.
-3. `firebase deploy --only firestore:rules,firestore:indexes,storage` then `firebase deploy --only functions`.
-4. Set admin claim: call `setRole` function or `auth.setCustomUserClaims(uid,{role:'super_admin'})`.
-5. Emulators: `firebase emulators:start`.
+## Supabase setup (NEW project — NOT the existing "zelda")
+1. Create a NEW project at supabase.com (leave the existing zelda project untouched).
+2. In the new project: SQL Editor → paste & run `supabase/schema.sql` (creates tables, RLS, the `questions_public` safe view, `submit_attempt` + `log_exam_event` RPCs, storage bucket). Then paste & run `supabase/seed.sql` — edit ADMIN_UUID first (see file header) and create the auth users as noted.
+3. Auth → Settings → turn OFF "Confirm email" for campus logins (or leave on for invite flow).
+4. Copy `.env.example` → `.env`, fill `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` (Project Settings → API).
+5. Create student logins: Dashboard → Authentication → Add user (email + password) + insert the matching `profiles` + `students` rows per `seed.sql` notes.
 
-## Deploy (Vercel + Firebase)
-- Vercel: import repo, set `VITE_*` envs, build `npm run build`, output `dist`. `vercel.json` handles SPA rewrites.
-- Firebase hosts Auth/Firestore/Functions/Storage.
+## Deploy (Vercel + Supabase)
+- Vercel: import repo, set `VITE_SUPABASE_*` envs, build `npm run build`, output `dist`. `vercel.json` handles SPA rewrites.
+- Supabase hosts Auth/Postgres/Storage (RLS enforces: students never read `correct_answer`).
 
 ## Project status
-Frontend: COMPLETE · Backend adapters: COMPLETE (local-first + Functions code) · Auth/RBAC: COMPLETE · Question Bank: COMPLETE · Exam engine (timer/fullscreen/tab/offline/autosave/auto-submit/one-attempt): COMPLETE · Monitoring timeline: COMPLETE · Results/analytics: COMPLETE · Excel import/export: COMPLETE · Security rules: COMPLETE · AI-assisted question import (PDF/Word/Excel/CSV + review/approval, file order + answer-deferral): COMPLETE · Tests: COMPLETE (vitest, 45 tests) · Deployment: READY
+Frontend: COMPLETE · Backend: Supabase (local-first fallback) · Auth/RBAC: COMPLETE · Question Bank: COMPLETE · Exam engine (timer/fullscreen/tab/offline/autosave/auto-submit/one-attempt): COMPLETE · Monitoring timeline: COMPLETE · Results/analytics: COMPLETE · Excel import/export: COMPLETE · RLS: COMPLETE · AI-assisted question import (PDF/Word/Excel/CSV + review/approval, file order + answer-deferral): COMPLETE · Tests: COMPLETE (vitest, 53 tests) · Deployment: READY — needs NEW Supabase project URL + anon key pasted into `.env` (app runs offline on local mock store until then)
 
 ## AI-assisted question bank import
 - Admin → Question Bank → **Import File** (or `/admin/questions/import`). Flow: UPLOAD → VALIDATE → EXTRACT → (OCR if scanned) → STRUCTURE → STAFF REVIEW → APPROVAL → BANK. Accepted: PDF (text + scanned via OCR), Word (.docx; text only — embedded images are skipped), XLSX/XLS/CSV (column auto-mapping + manual confirm).
@@ -43,5 +43,5 @@ Frontend: COMPLETE · Backend adapters: COMPLETE (local-first + Functions code) 
 ## Known limitations
 - SHORT_ANSWER auto-grade is exact-match; subjective grading queue is manual in v1.
 - Charts are lightweight CSS bars (no chart lib to keep bundle small).
-- Bulk import creates default password `Student@123` — force reset in production.
+- Bulk import creates default password `Jjcet@2k26` — force reset in production.
 - Multi-tab concurrency guarded by single active attempt per exam; true distributed locks need Firestore transactions in live mode.

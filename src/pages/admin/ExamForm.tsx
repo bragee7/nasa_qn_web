@@ -1,31 +1,47 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Shell, SideLink } from '../../components/layout';
 import { Card } from '../../components/ui';
-import { db } from '../../lib/store';
 import { hashPassword, uid, examDepartments, DEPT_OPTIONS } from '../../lib/utils';
+import { repo } from '../../lib/repo';
+import { audit } from '../../lib/audit';
 import { useSession } from '../../services/auth';
 import { allBanks, bankQuestions, snapshotBank } from '../../services/banks';
+import type { QuestionBank, Question } from '../../types/models';
 export default function ExamForm(){
   const { examId }=useParams(); const nav=useNavigate(); const { session }=useSession();
-  const existing=examId?db.get<any>('exams',examId):null;
-  const bank=db.all<any>('questionBank').filter(q=>q.status==='active');
-  const [banks]=useState(()=>allBanks(false));
+  const [existing,setExisting]=useState<any>(null);
+  const [bank,setBank]=useState<any[]>([]);
+  const [banks,setBanks]=useState<QuestionBank[]>([]);
+  const [bankQs,setBankQs]=useState<Question[]>([]);
+  const [f,setF]=useState({ title:'', subject:'DBMS', year:'all', section:'all', durationMin:60, startAt:'', endAt:'', password:'', randomizeQuestions:true, randomizeOptions:true });
+  const [depts,setDepts]=useState<string[]>([...DEPT_OPTIONS]);
+  const [sel,setSel]=useState<string[]>([]);
+  const [bankId,setBankId]=useState<string>('');
+  const [preview,setPreview]=useState(false);
+  const [err,setErr]=useState('');
+  useEffect(()=>{ (async()=>{
+    const bs=await allBanks(false); setBanks(bs);
+    const b=(await repo.all<any>('questionBank')).filter(q=>q.status==='active'); setBank(b);
+    if(examId){
+      const ex=await repo.get<any>('exams',examId);
+      if(ex){
+        setExisting(ex);
+        setF({ title:ex.title??'', subject:ex.subject??'DBMS', year:String(ex.year??'all'), section:ex.section??'all', durationMin:ex.durationMin??60, startAt:new Date(ex.startAt).toISOString().slice(0,16), endAt:new Date(ex.endAt).toISOString().slice(0,16), password:'', randomizeQuestions:ex.randomizeQuestions??true, randomizeOptions:ex.randomizeOptions??true });
+        const id2=examDepartments(ex); setDepts(id2.length?id2:[...DEPT_OPTIONS]);
+        setSel(ex.manualQids??[]);
+        setBankId(ex.questionBankId??bs[0]?.id??'');
+      } else setBankId(bs[0]?.id??'');
+    } else setBankId(bs[0]?.id??'');
+  })(); },[examId]);
+  useEffect(()=>{ (async()=>{ setBankQs(bankId?await bankQuestions(bankId):[]); })(); },[bankId]);
   // Legacy exams (manualQids, no bank) keep the old per-question picker; all new/converted exams use one bank.
   const legacyMode=!!(existing?.manualQids?.length&&!existing?.questionBankId);
-  const [f,setF]=useState({ title:existing?.title??'', subject:existing?.subject??'DBMS', year:existing?.year??'all', section:existing?.section??'all', durationMin:existing?.durationMin??60, startAt:existing?new Date(existing.startAt).toISOString().slice(0,16):'', endAt:existing?new Date(existing.endAt).toISOString().slice(0,16):'', password:'', randomizeQuestions:existing?.randomizeQuestions??true, randomizeOptions:existing?.randomizeOptions??true });
-  const initDepts = examDepartments(existing ?? { department: undefined });
-  const [depts,setDepts]=useState<string[]>(initDepts.length?initDepts:[...DEPT_OPTIONS]);
   const allChecked = depts.length===DEPT_OPTIONS.length;
   const toggleDept=(d:string)=>setDepts(s=>s.includes(d)?s.filter(x=>x!==d):[...s,d]);
   const toggleAll=()=>setDepts(s=>s.length===DEPT_OPTIONS.length?[]:[...DEPT_OPTIONS]);
-  const [sel,setSel]=useState<string[]>(existing?.manualQids??[]);
-  const [bankId,setBankId]=useState<string>(existing?.questionBankId??banks[0]?.id??'');
-  const [preview,setPreview]=useState(false);
-  const bankQs=legacyMode?[]:bankQuestions(bankId);
   const noAnsCount=legacyMode?0:bankQs.filter(q=>q.correctAnswer==null).length;
   const bankTotal=bankQs.reduce((s,q)=>s+(q.marks??0),0);
-  const [err,setErr]=useState('');
   const set=(k:string,v:any)=>setF(s=>({...s,[k]:v}));
   async function save(publish:boolean){
     if(!f.title||!f.startAt||!f.endAt){ setErr('Title, start and end required'); return; }
@@ -40,9 +56,9 @@ export default function ExamForm(){
     if(noAns.length>0 && !confirm(`${noAns.length} question(s) have no correct answer yet — they will score 0 for every student. Continue anyway?`)) return;
     const pwHash=existing?.passwordHash??await hashPassword(f.password);
     const total=qs.reduce((s,q)=>s+(q.marks??0),0);
-    const rec:any={ id:existing?.id??uid('exam'), title:f.title, description:'', subject:f.subject, department:depts, year:f.year==='all'?'all':Number(f.year), section:f.section, durationMin:Number(f.durationMin), startAt:start, endAt:end, passwordHash:pwHash, status:publish?'SCHEDULED':(existing?.status??'DRAFT'), totalMarks:total, randomizeQuestions:!!f.randomizeQuestions, randomizeOptions:!!f.randomizeOptions, oneAttemptOnly:true, negativeMarking:false, negativeMarks:0, resultsReleaseMode:'IMMEDIATE', passPct:40, manualQids:legacyMode?sel:undefined, questionBankId:legacyMode?undefined:bankId, questionSnapshot:legacyMode?existing?.questionSnapshot:snapshotBank(bankId), createdBy:session!.uid, createdAt:existing?.createdAt??Date.now(), updatedAt:Date.now() };
-    db.put('exams',rec);
-    const l=db.all<any>('auditLogs'); l.push({id:crypto.randomUUID(),adminId:session!.uid,adminEmail:session!.email,action:existing?'EXAM_UPDATED':'EXAM_CREATED',targetType:'exam',targetId:rec.id,timestamp:Date.now(),metadata:{title:rec.title}}); localStorage.setItem('examora_auditLogs',JSON.stringify(l));
+    const rec:any={ id:existing?.id??uid('exam'), title:f.title, description:'', subject:f.subject, department:depts, year:f.year==='all'?'all':Number(f.year), section:f.section, durationMin:Number(f.durationMin), startAt:start, endAt:end, passwordHash:pwHash, status:publish?'SCHEDULED':(existing?.status??'DRAFT'), totalMarks:total, randomizeQuestions:!!f.randomizeQuestions, randomizeOptions:!!f.randomizeOptions, oneAttemptOnly:true, negativeMarking:false, negativeMarks:0, resultsReleaseMode:'IMMEDIATE', passPct:40, manualQids:legacyMode?sel:undefined, questionBankId:legacyMode?undefined:bankId, questionSnapshot:legacyMode?existing?.questionSnapshot:await snapshotBank(bankId), createdBy:session!.uid, createdAt:existing?.createdAt??Date.now(), updatedAt:Date.now() };
+    await repo.put('exams',rec);
+    await audit(existing?'EXAM_UPDATED':'EXAM_CREATED',rec.id,{title:rec.title},'exam');
     nav('/admin/exams');
   }
   return <Shell sidebar={<><SideLink to="/admin/exams" label="Exams" /><SideLink to="/admin/question-banks" label="Question Banks" /><SideLink to="/admin/questions" label="All Questions" /></>}>

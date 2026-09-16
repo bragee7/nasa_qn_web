@@ -2,11 +2,11 @@
 // Pipeline: UPLOAD → VALIDATE → EXTRACT → (OCR if scanned) → AI ANALYSIS
 // → STRUCTURE → VALIDATE → DUPLICATE CHECK → REVIEW. Nothing is published
 // here — analyzed rows are staged for mandatory staff review.
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Shell, SideLink } from '../../components/layout';
 import { Card } from '../../components/ui';
-import { db } from '../../lib/store';
+import { repo } from '../../lib/repo';
 import { uid } from '../../lib/utils';
 import { useSession } from '../../services/auth';
 import { getBank } from '../../services/banks';
@@ -22,9 +22,10 @@ import { getExtractionService } from '../../services/aiImport/providers';
 import { findDuplicate } from '../../services/aiImport/duplicates';
 import {
   createImport, addStagedBulk, refreshImportCounters, setImportStatus,
-  deleteImport, auditImport, canManageQuestions,
+  deleteImport, auditImport, canManageQuestions, updateImport,
 } from '../../services/aiImport/importStore';
 import type { FileKind, ImportRecord, StagedQuestion } from '../../services/aiImport/types';
+import type { QuestionBank } from '../../types/models';
 
 type Phase = 'pick' | 'sheet' | 'mapping' | 'analyzing' | 'summary' | 'failed';
 interface Step { label: string; state: 'todo' | 'active' | 'done' | 'skip'; detail?: string; }
@@ -37,7 +38,8 @@ export default function ImportQuestions() {
   const [params] = useSearchParams();
   // Launched from a bank's “Import Into Bank” link (?bank=…) — approved rows land in that bank.
   const targetBankId = params.get('bank') || undefined;
-  const targetBank = targetBankId ? getBank(targetBankId) : undefined;
+  const [targetBank,setTargetBank]=useState<QuestionBank|undefined>(undefined);
+  useEffect(()=>{ if(targetBankId) getBank(targetBankId).then(setTargetBank); },[targetBankId]);
   const fileRef = useRef<HTMLInputElement>(null);
   const [phase, setPhase] = useState<Phase>('pick');
   const [dragOver, setDragOver] = useState(false);
@@ -103,7 +105,7 @@ export default function ImportQuestions() {
 
   // ---------- PDF pipeline ----------
   async function runPdfPipeline(f: File) {
-    const rec = createImport({
+    const rec = await createImport({
       id: uid('imp'), fileName: f.name, fileType: 'pdf', fileSize: f.size, bankId: targetBankId,
       uploadedBy: session!.uid, uploadedByEmail: session!.email, uploadedAt: Date.now(),
       provider: getExtractionService().id, totalQuestions: 0, readyQuestions: 0,
@@ -111,7 +113,7 @@ export default function ImportQuestions() {
       status: 'PROCESSING', errorReport: [],
     });
     setImportId(rec.id);
-    auditImport('QUESTION_IMPORT_STARTED', session!.uid, session!.email, rec.id, { fileName: f.name, skipAnswers: deferAnswers, bankId: targetBankId });
+    await auditImport('QUESTION_IMPORT_STARTED', session!.uid, session!.email, rec.id, { fileName: f.name, skipAnswers: deferAnswers, bankId: targetBankId });
     const st: Step[] = [
       { label: 'Uploading', state: 'done' },
       { label: 'Extracting text', state: 'active' },
@@ -125,7 +127,7 @@ export default function ImportQuestions() {
       const { pages, pageCount, pdf } = await extractPdfPages(f, (d, t) => {
         st[1].detail = `Page ${d}/${t}`; paint();
       });
-      updateImportMeta(rec.id, { pageCount });
+      await updateImportMeta(rec.id, { pageCount });
       // OCR fallback for scan pages
       const scanIdx = pages.map((p, i) => (pageNeedsOcr(p.text) ? i : -1)).filter(i => i >= 0);
       st[1].state = 'done';
@@ -147,16 +149,16 @@ export default function ImportQuestions() {
       const res = await svc.extract({ kind: 'pdf-text', pages, importId: rec.id, fileName: f.name, skipAnswers: deferAnswers });
       st[3].state = 'done'; st[3].detail = `${res.staged.length} question(s)${res.answerKeyEntries ? `, ${res.answerKeyEntries} answer-key entries` : ''}`;
       st[4].state = 'active'; paint(); await tick();
-      finishAnalysis(rec.id, res.staged, res.warnings);
+      await finishAnalysis(rec.id, res.staged, res.warnings);
       st[4].state = 'done'; paint();
     } catch (e: any) {
-      fail(rec.id, [e.message || 'Analysis failed for an unknown reason.']);
+      await fail(rec.id, [e.message || 'Analysis failed for an unknown reason.']);
     }
   }
 
   // ---------- Word (.docx) pipeline: extract text → parse like document text ----------
   async function runDocxPipeline(f: File) {
-    const rec = createImport({
+    const rec = await createImport({
       id: uid('imp'), fileName: f.name, fileType: 'docx', fileSize: f.size, bankId: targetBankId,
       uploadedBy: session!.uid, uploadedByEmail: session!.email, uploadedAt: Date.now(),
       provider: getExtractionService().id, totalQuestions: 0, readyQuestions: 0,
@@ -164,7 +166,7 @@ export default function ImportQuestions() {
       status: 'PROCESSING', errorReport: [],
     });
     setImportId(rec.id);
-    auditImport('QUESTION_IMPORT_STARTED', session!.uid, session!.email, rec.id, { fileName: f.name, skipAnswers: deferAnswers, bankId: targetBankId });
+    await auditImport('QUESTION_IMPORT_STARTED', session!.uid, session!.email, rec.id, { fileName: f.name, skipAnswers: deferAnswers, bankId: targetBankId });
     const st: Step[] = [
       { label: 'Uploading', state: 'done' },
       { label: 'Extracting document text', state: 'active' },
@@ -179,24 +181,24 @@ export default function ImportQuestions() {
       if (pages.length === 0) {
         throw new Error('No readable text found in this Word file. If the questions are pictures/scans inside the document, export it as PDF instead (scanned PDFs get OCR).');
       }
-      updateImportMeta(rec.id, { pageCount: pages.length });
+      await updateImportMeta(rec.id, { pageCount: pages.length });
       st[1].state = 'done'; st[1].detail = `${pages.length} section(s)`;
       st[2].state = 'active'; paint(); await tick();
       const svc = getExtractionService();
       const res = await svc.extract({ kind: 'pdf-text', pages, importId: rec.id, fileName: f.name, skipAnswers: deferAnswers });
       st[2].state = 'done'; st[2].detail = `${res.staged.length} question(s)${res.answerKeyEntries ? `, ${res.answerKeyEntries} answer-key entries` : ''}`;
       st[3].state = 'active'; paint(); await tick();
-      finishAnalysis(rec.id, res.staged, [...messages.map(m => `Word conversion note: ${m}`), ...res.warnings]);
+      await finishAnalysis(rec.id, res.staged, [...messages.map(m => `Word conversion note: ${m}`), ...res.warnings]);
       st[3].state = 'done'; paint();
     } catch (e: any) {
-      fail(rec.id, [e.message || 'Analysis failed for an unknown reason.']);
+      await fail(rec.id, [e.message || 'Analysis failed for an unknown reason.']);
     }
   }
 
   // ---------- spreadsheet pipeline ----------
   async function runRowsPipeline(sh: SheetData, map: ColumnMapping[]) {
     const f = file!;
-    const rec = createImport({
+    const rec = await createImport({
       id: uid('imp'), fileName: f.name, fileType: kind!, fileSize: f.size, bankId: targetBankId,
       uploadedBy: session!.uid, uploadedByEmail: session!.email, uploadedAt: Date.now(),
       provider: getExtractionService().id, sheetName: sh.name,
@@ -205,7 +207,7 @@ export default function ImportQuestions() {
       status: 'PROCESSING', errorReport: [],
     });
     setImportId(rec.id);
-    auditImport('QUESTION_IMPORT_STARTED', session!.uid, session!.email, rec.id, { fileName: f.name, sheet: sh.name, skipAnswers: deferAnswers, bankId: targetBankId });
+    await auditImport('QUESTION_IMPORT_STARTED', session!.uid, session!.email, rec.id, { fileName: f.name, sheet: sh.name, skipAnswers: deferAnswers, bankId: targetBankId });
     const st: Step[] = [
       { label: 'Uploading', state: 'done' },
       { label: 'Reading worksheet', state: 'done', detail: `${sh.rows.length} row(s) in “${sh.name}”` },
@@ -225,12 +227,12 @@ export default function ImportQuestions() {
     }
   }
 
-  function finishAnalysis(id: string, staged: StagedQuestion[], warningsList: string[]) {
+  async function finishAnalysis(id: string, staged: StagedQuestion[], warningsList: string[]) {
     if (staged.length === 0) {
-      fail(id, ['No questions could be detected in this file. Check the format (numbered questions with options, or a header row like Question | Option A | Answer | Marks) and try again.', ...warningsList]);
+      await fail(id, ['No questions could be detected in this file. Check the format (numbered questions with options, or a header row like Question | Option A | Answer | Marks) and try again.', ...warningsList]);
       return;
     }
-    const bank = db.all<any>('questionBank');
+    const bank = await repo.all<any>('questionBank');
     for (const q of staged) {
       const hit = findDuplicate(q.text, bank);
       if (hit) {
@@ -238,29 +240,27 @@ export default function ImportQuestions() {
         q.reviewNotes.push(`Possible duplicate of an existing question (${hit.similarity}% similar). Decide: keep both or skip.`);
       }
     }
-    addStagedBulk(staged);
-    const rec = refreshImportCounters(id);
-    setImportStatus(id, 'REVIEW');
-    const full = { ...(rec as ImportRecord), status: 'REVIEW' as const };
+    await addStagedBulk(staged);
+    const rec = await refreshImportCounters(id);
+    await setImportStatus(id, 'REVIEW');
+    const full = { ...(rec as unknown as ImportRecord), status: 'REVIEW' as const };
     setSummary(full);
-    auditImport('QUESTION_AI_EXTRACTED', session!.uid, session!.email, id, {
+    await auditImport('QUESTION_AI_EXTRACTED', session!.uid, session!.email, id, {
       total: full.totalQuestions, ready: full.readyQuestions, review: full.reviewQuestions,
     });
     setPhase('summary');
   }
 
-  function updateImportMeta(id: string, patch: Partial<ImportRecord>) {
-    void id; void patch;
-    // pageCount etc. — applied via importStore update
-    import('./../../services/aiImport/importStore').then(m => m.updateImport(id, patch));
+  async function updateImportMeta(id: string, patch: Partial<ImportRecord>) {
+    await updateImport(id, patch);
   }
 
-  function fail(id: string, errs: string[]) {
+  async function fail(id: string, errs: string[]) {
     setErrorReport(errs);
     setFailMsg(errs[0] || 'Analysis failed.');
     if (id) {
-      setImportStatus(id, 'FAILED', { errorReport: errs });
-      auditImport('QUESTION_IMPORT_FAILED', session!.uid, session!.email, id, { errors: errs.slice(0, 5) });
+      await setImportStatus(id, 'FAILED', { errorReport: errs });
+      await auditImport('QUESTION_IMPORT_FAILED', session!.uid, session!.email, id, { errors: errs.slice(0, 5) });
       setImportId(id);
     }
     setPhase('failed');
@@ -277,8 +277,8 @@ export default function ImportQuestions() {
     URL.revokeObjectURL(a.href);
   }
 
-  function cancelImport() {
-    if (importId) deleteImport(importId);
+  async function cancelImport() {
+    if (importId) await deleteImport(importId);
     setImportId(''); setSummary(null); setFile(null); setPhase('pick');
   }
 

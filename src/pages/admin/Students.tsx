@@ -1,20 +1,22 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Shell, SideLink } from '../../components/layout';
 import { Card, Empty } from '../../components/ui';
-import { db, sha } from '../../lib/store';
-import { useSession } from '../../services/auth';
+import { sha } from '../../lib/store';
+import { repo } from '../../lib/repo';
+import { isSupabaseConfigured } from '../../lib/supabase';
+import { audit } from '../../lib/audit';
+import { DEFAULT_STUDENT_PASSWORD } from '../../config/app';
 export default function Students(){
-  const { session }=useSession();
   const [q,setQ]=useState(''); const [dept,setDept]=useState('All'); const [year,setYear]=useState('All');
-  const [list,setList]=useState(()=>db.all<any>('students'));
+  const [list,setList]=useState<any[]>([]);
   const [sel,setSel]=useState<Set<string>>(new Set());
-  const refresh=()=>{ setList([...db.all<any>('students')]); setSel(new Set()); };
+  const refresh=async()=>{ setList(await repo.all<any>('students')); setSel(new Set()); };
+  useEffect(()=>{ refresh(); },[]);
   // add form
   const [reg,setReg]=useState(''); const [name,setName]=useState(''); const [email,setEmail]=useState('');
   const [dpt,setDpt]=useState('CSE'); const [yr,setYr]=useState('2'); const [sec,setSec]=useState('A');
   const [msg,setMsg]=useState(''); const [err,setErr]=useState(''); const [openAdd,setOpenAdd]=useState(false);
-  function audit(action:string,targetId:string,metadata:any={}){ const l=db.all<any>('auditLogs'); l.push({id:crypto.randomUUID(),adminId:session!.uid,adminEmail:session!.email,action,targetType:'student',targetId,timestamp:Date.now(),metadata}); localStorage.setItem('examora_auditLogs',JSON.stringify(l)); }
   const filtered=useMemo(()=> list.filter((s:any)=>(q===''||(s.studentId+s.name+s.email).toLowerCase().includes(q.toLowerCase()))&&(dept==='All'||s.department===dept)&&(year==='All'||String(s.year)===String(year))),[list,q,dept,year]);
   const toggleSel=(id:string)=> setSel(prev=>{ const n=new Set(prev); if(n.has(id)) n.delete(id); else n.add(id); return n; });
   async function handleAdd(){
@@ -23,42 +25,52 @@ export default function Students(){
     if(!r) return setErr('Register No is required.');
     if(!n) return setErr('Name is required.');
     if(!e || !e.includes('@')) return setErr('Valid Email is required.');
-    const all=db.all<any>('students');
+    const all=await repo.all<any>('students');
     if(all.some((s:any)=>s.studentId===r || s.id===r)) return setErr(`Register No "${r}" already exists.`);
     if(all.some((s:any)=>s.email.toLowerCase()===e)) return setErr(`Email "${e}" already exists.`);
     const rec:any={ id:r, studentId:r, name:n, email:e, department:dpt, year:Number(yr), section:sec||'A', status:'active', createdAt:Date.now(), updatedAt:Date.now(), uid:'u_'+r };
-    db.put('students', rec);
-    if(!db.all<any>('users').some((u:any)=>u.email.toLowerCase()===e)){
-      db.put('users',{uid:'u_'+r,email:e,passHash:await sha('Student@123'),role:'student',studentId:r,name:n});
+    await repo.put('students', rec);
+    if (!isSupabaseConfigured) {
+      if(!(await repo.all<any>('users')).some((u:any)=>u.email.toLowerCase()===e)){
+        await repo.put('users',{uid:'u_'+r,email:e,passHash:await sha(DEFAULT_STUDENT_PASSWORD),role:'student',studentId:r,name:n});
+      }
+      setMsg(`Added ${n} (${r}) — password: ${DEFAULT_STUDENT_PASSWORD}`);
+    } else {
+      setMsg(`Added ${n} (${r}) — now create the login in Supabase Dashboard → Authentication → Add user (${e}).`);
     }
-    audit('STUDENT_CREATED',r,{source:'students-page'});
-    setMsg(`Added ${n} (${r}) — password: Student@123`);
+    await audit('STUDENT_CREATED',r,{source:'students-page'},'student');
     setReg(''); setName(''); setEmail('');
     refresh();
   }
-  function handleDelete(id:string){
+  async function handleDelete(id:string){
     if(!confirm(`Delete student ${id}? This removes the student and login (cannot be undone).`)) return;
-    const s=db.get<any>('students',id);
-    db.remove('students', id);
-    const users=db.all<any>('users');
-    for(const u of users.filter((u:any)=>u.studentId===id || u.uid==='u_'+id)){
-      const cur=db.all<any>('users'); localStorage.setItem('examora_users', JSON.stringify(cur.filter((x:any)=>x.uid!==u.uid)));
+    const s=await repo.get<any>('students',id);
+    await repo.remove('students', id);
+    if (!isSupabaseConfigured) {
+      for(const u of (await repo.all<any>('users')).filter((u:any)=>u.studentId===id || u.uid==='u_'+id)){
+        await repo.remove('users', u.uid);
+      }
     }
-    audit('STUDENT_DELETED', id, {name:s?.name});
+    await audit('STUDENT_DELETED', id, {name:s?.name},'student');
     refresh();
   }
-  function bulkDelete(){
+  async function bulkDelete(){
     if(sel.size===0) return;
     if(!confirm(`Delete ${sel.size} selected student(s)? This will also remove their logins.`)) return;
     for(const id of sel){
-      db.remove('students', id);
-      const users=db.all<any>('users');
-      for(const u of users.filter((u:any)=>u.studentId===id || u.uid==='u_'+id)){
-        const cur=db.all<any>('users'); localStorage.setItem('examora_users', JSON.stringify(cur.filter((x:any)=>x.uid!==u.uid)));
+      await repo.remove('students', id);
+      if (!isSupabaseConfigured) {
+        for(const u of (await repo.all<any>('users')).filter((u:any)=>u.studentId===id || u.uid==='u_'+id)){
+          await repo.remove('users', u.uid);
+        }
       }
-      audit('STUDENT_DELETED', id, {bulk:true});
+      await audit('STUDENT_DELETED', id, {bulk:true},'student');
     }
     refresh();
+  }
+  async function toggleStatus(s:any){
+    s.status=s.status==='active'?'disabled':'active'; s.updatedAt=Date.now();
+    await repo.put('students',s); await audit('STUDENT_UPDATED',s.id,{status:s.status},'student'); refresh();
   }
   return <Shell sidebar={<><SideLink to="/admin/dashboard" label="Dashboard" /><SideLink to="/admin/students" label="Students" /><SideLink to="/admin/exams" label="Exams" /><SideLink to="/admin/questions" label="Question Bank" /><SideLink to="/admin/question-banks" label="Banks" /><SideLink to="/admin/results" label="Results" /><SideLink to="/admin/monitoring" label="Monitoring" /><SideLink to="/admin/analytics" label="Analytics" /><SideLink to="/admin/audit-logs" label="Audit Logs" /><SideLink to="/admin/settings" label="Settings" /></>}>
     <Card>
@@ -69,7 +81,7 @@ export default function Students(){
         <Link className="btn-ghost !px-3 !py-1 text-sm" to="/admin/dashboard">Dashboard →</Link>
       </div>
       {openAdd && <div className="mt-3 border-t pt-3">
-        <p className="text-xs text-slate-500">Add one student instantly. Default password: <code>Student@123</code></p>
+        <p className="text-xs text-slate-500">Add one student instantly. Default password: <code>{DEFAULT_STUDENT_PASSWORD}</code></p>
         <div className="grid sm:grid-cols-3 lg:grid-cols-6 gap-2 mt-2">
           <div><label className="label">Register No *</label><input className="input" placeholder="22CSE001" value={reg} onChange={e=>setReg(e.target.value)} /></div>
           <div><label className="label">Name *</label><input className="input" placeholder="Full name" value={name} onChange={e=>setName(e.target.value)} /></div>
@@ -98,7 +110,7 @@ export default function Students(){
     {filtered.length===0?<Empty title="No students found." sub={q||dept!=='All'||year!=='All' ? 'Try a different search.' : 'Add a student or import your list to get started.'} />:
     <Card><div className="overflow-auto"><table className="table"><thead><tr><th><input type="checkbox" checked={filtered.length>0 && filtered.every((s:any)=>sel.has(s.id))} onChange={e=> setSel(e.target.checked ? new Set(filtered.map((s:any)=>s.id)) : new Set())} /></th><th>Reg No</th><th>Name</th><th>Email</th><th>Dept</th><th>Year</th><th>Sec</th><th>Status</th><th>Actions</th></tr></thead><tbody>
       {filtered.slice(0,300).map((s:any)=><tr key={s.id}><td><input type="checkbox" checked={sel.has(s.id)} onChange={()=>toggleSel(s.id)} /></td><td className="font-mono text-xs">{s.studentId}</td><td>{s.name}</td><td className="text-xs">{s.email}</td><td>{s.department}</td><td>{s.year}</td><td>{s.section}</td><td><span className={`badge ${s.status==='active'?'bg-green-100 text-green-700':'bg-slate-200 text-slate-600'}`}>{s.status}</span></td>
-      <td className="flex gap-1 flex-wrap"><button className="btn-ghost !px-2 !py-1 text-xs" onClick={()=>{s.status=s.status==='active'?'disabled':'active'; s.updatedAt=Date.now(); db.put('students',s); audit('STUDENT_UPDATED',s.id,{status:s.status}); refresh();}}>{s.status==='active'?'Disable':'Enable'}</button><button className="btn-danger !px-2 !py-1 text-xs" onClick={()=>handleDelete(s.id)}>Delete</button></td></tr>)}
+      <td className="flex gap-1 flex-wrap"><button className="btn-ghost !px-2 !py-1 text-xs" onClick={()=>toggleStatus(s)}>{s.status==='active'?'Disable':'Enable'}</button><button className="btn-danger !px-2 !py-1 text-xs" onClick={()=>handleDelete(s.id)}>Delete</button></td></tr>)}
     </tbody></table></div>{filtered.length>300 && <p className="text-xs text-slate-500 mt-2">Showing 300 of {filtered.length} — use search to narrow.</p>}</Card>}
   </Shell>;
 }

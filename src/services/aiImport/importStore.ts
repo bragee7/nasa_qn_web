@@ -1,79 +1,70 @@
 // Import persistence: `questionImports` records + `importQuestions` staged rows.
 // Staged rows live OUTSIDE `questionBank` — nothing reaches production data
 // without explicit staff approval (spec §41).
-import { db } from '../../lib/store';
+import { repo } from '../../lib/repo';
+import { audit } from '../../lib/audit';
 import type { ImportRecord, ImportStatus, StagedQuestion } from './types';
 
 const IMPORTS = 'questionImports';
 const STAGED = 'importQuestions';
 
-function writeAudit(action: string, adminId: string, adminEmail: string, importId: string, extra: Record<string, unknown> = {}) {
-  const l = db.all<any>('auditLogs');
-  l.push({
-    id: crypto.randomUUID(), adminId, adminEmail, action,
-    targetType: 'question_import', targetId: importId, timestamp: Date.now(), metadata: extra,
-  });
-  localStorage.setItem('examora_auditLogs', JSON.stringify(l));
+export async function auditImport(action: string, adminId: string, adminEmail: string, importId: string, extra: Record<string, unknown> = {}) {
+  void adminId; void adminEmail;
+  await audit(action, importId, extra, 'question_import');
 }
 
-export const auditImport = writeAudit;
-
-export function createImport(rec: Omit<ImportRecord, 'createdAt' | 'updatedAt'>): ImportRecord {
+export async function createImport(rec: Omit<ImportRecord, 'createdAt' | 'updatedAt'>): Promise<ImportRecord> {
   const full: ImportRecord = { ...rec, createdAt: Date.now(), updatedAt: Date.now() };
-  db.put(IMPORTS, full);
+  await repo.put(IMPORTS, full);
   return full;
 }
 
-export function updateImport(id: string, patch: Partial<ImportRecord>): ImportRecord | undefined {
-  const cur = db.all<ImportRecord>(IMPORTS).find(r => r.id === id);
+export async function updateImport(id: string, patch: Partial<ImportRecord>): Promise<ImportRecord | undefined> {
+  const cur = await repo.get<ImportRecord>(IMPORTS, id);
   if (!cur) return undefined;
   const next = { ...cur, ...patch, updatedAt: Date.now() };
-  db.put(IMPORTS, next);
+  await repo.put(IMPORTS, next);
   return next;
 }
 
-export function getImport(id: string): ImportRecord | undefined {
-  return db.all<ImportRecord>(IMPORTS).find(r => r.id === id);
+export async function getImport(id: string): Promise<ImportRecord | undefined> {
+  return repo.get<ImportRecord>(IMPORTS, id);
 }
 
-export function listImports(): ImportRecord[] {
-  return db.all<ImportRecord>(IMPORTS).sort((a, b) => b.createdAt - a.createdAt);
+export async function listImports(): Promise<ImportRecord[]> {
+  return (await repo.all<ImportRecord>(IMPORTS)).sort((a, b) => b.createdAt - a.createdAt);
 }
 
-/** Bulk insert (single write — avoids O(n²) localStorage churn on big files). */
-export function addStagedBulk(rows: StagedQuestion[]) {
-  if (!rows.length) return;
-  const all = db.all<StagedQuestion>(STAGED);
-  all.push(...rows);
-  localStorage.setItem('examora_' + STAGED, JSON.stringify(all));
+/** Bulk insert of staged rows. */
+export async function addStagedBulk(rows: StagedQuestion[]) {
+  for (const r of rows) await repo.put(STAGED, r);
 }
 
-export function stagedForImport(importId: string): StagedQuestion[] {
-  return db.all<StagedQuestion>(STAGED).filter(q => q.importId === importId);
+export async function stagedForImport(importId: string): Promise<StagedQuestion[]> {
+  return repo.query<StagedQuestion>(STAGED, q => q.importId === importId);
 }
 
-export function updateStaged(q: StagedQuestion) {
-  db.put(STAGED, { ...q, updatedAt: Date.now() });
+export async function updateStaged(q: StagedQuestion) {
+  await repo.put(STAGED, { ...q, updatedAt: Date.now() });
 }
 
-export function removeStaged(id: string) {
-  db.remove(STAGED, id);
+export async function removeStaged(id: string) {
+  await repo.remove(STAGED, id);
 }
 
 /** Delete an import + its staged rows (secure deletion for failed/cancelled work). */
-export function deleteImport(id: string) {
-  const keep = db.all<StagedQuestion>(STAGED).filter(q => q.importId !== id);
-  localStorage.setItem('examora_' + STAGED, JSON.stringify(keep));
-  db.remove(IMPORTS, id);
+export async function deleteImport(id: string) {
+  for (const q of await stagedForImport(id)) await repo.remove(STAGED, q.id);
+  await repo.remove(IMPORTS, id);
 }
 
-export function setImportStatus(id: string, status: ImportStatus, patch: Partial<ImportRecord> = {}) {
-  updateImport(id, { ...patch, status });
+export async function setImportStatus(id: string, status: ImportStatus, patch: Partial<ImportRecord> = {}) {
+  await updateImport(id, { ...patch, status });
 }
 
 /** Recompute summary counters from staged rows. */
-export function refreshImportCounters(id: string): ImportRecord | undefined {
-  const rows = stagedForImport(id);
+export async function refreshImportCounters(id: string): Promise<ImportRecord | undefined> {
+  const rows = await stagedForImport(id);
   const count = (s: StagedQuestion['status']) => rows.filter(q => q.status === s).length;
   return updateImport(id, {
     totalQuestions: rows.length,
