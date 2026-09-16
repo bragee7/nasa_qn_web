@@ -363,6 +363,68 @@ end;
 $$;
 grant execute on function public.log_exam_event(text, text, jsonb) to authenticated;
 
+-- Admin-provisioned student Auth user (SECURITY DEFINER — inserts into
+-- auth.users / auth.identities + public.profiles so quick-add and bulk
+-- import can create logins without the service_role key in the browser).
+create or replace function public.create_student_user(
+  p_email text,
+  p_password text,
+  p_student_id text,
+  p_name text
+) returns json
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid;
+begin
+  v_uid := gen_random_uuid();
+
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, created_at, updated_at,
+    confirmation_token, recovery_token, raw_app_meta_data, raw_user_meta_data
+  ) values (
+    '00000000-0000-0000-0000-000000000000',
+    v_uid, 'authenticated', 'authenticated', p_email,
+    extensions.crypt(p_password, extensions.gen_salt('bf')),
+    now(), now(), now(),
+    '', '{}', '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb
+  );
+
+  insert into auth.identities (id, user_id, provider, provider_id, identity_data, created_at, updated_at)
+  values (v_uid, v_uid, 'email', p_email, jsonb_build_object('sub', v_uid, 'email', p_email), now(), now());
+
+  insert into public.profiles (id, email, role, student_id, name, active)
+  values (v_uid, p_email, 'student', p_student_id, p_name, true);
+
+  return jsonb_build_object('uid', v_uid, 'email', p_email);
+end;
+$$;
+grant execute on function public.create_student_user(text, text, text, text) to authenticated;
+
+-- Admin-deletes student Auth user (profiles → identities → auth.users).
+-- No-op when student_id unknown (idempotent for retry / bulk delete).
+create or replace function public.delete_student_user(p_student_id text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid;
+begin
+  select id into v_uid from public.profiles where student_id = p_student_id;
+  if v_uid is null then return; end if;
+
+  delete from public.profiles where id = v_uid;
+  delete from auth.identities where user_id = v_uid;
+  delete from auth.users where id = v_uid;
+end;
+$$;
+grant execute on function public.delete_student_user(text) to authenticated;
+
 -- -------------------------------------------------------------- 6. realtime
 -- Live monitoring dashboard (attempts + proctoring events stream).
 alter publication supabase_realtime add table public.attempts;
