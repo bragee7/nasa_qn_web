@@ -38,3 +38,5 @@ firestore-debug.log
 .idea
 *.swp
 *.swo
+.vercel
+.env*
