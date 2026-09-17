@@ -1,28 +1,31 @@
+import { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Topbar } from './components/layout';
 import { RequireAuth, RequireRole } from './components/Protected';
 import Login from './pages/Login';
-import StudentDashboard from './pages/student/Dashboard';
-import ExamTake from './pages/student/ExamTake';
-import StudentResult from './pages/student/Result';
-import AdminDashboard from './pages/admin/Dashboard';
-import Students from './pages/admin/Students';
-import ImportStudents from './pages/admin/ImportStudents';
-import Exams from './pages/admin/Exams';
-import ExamForm from './pages/admin/ExamForm';
-import Questions from './pages/admin/Questions';
-import QuestionBanks from './pages/admin/QuestionBanks';
-import BankDetail from './pages/admin/BankDetail';
-import ImportQuestions from './pages/admin/ImportQuestions';
-import ImportReview from './pages/admin/ImportReview';
-import ImportHistory from './pages/admin/ImportHistory';
-import Results from './pages/admin/Results';
-import Monitoring from './pages/admin/Monitoring';
-import Analytics from './pages/admin/Analytics';
-import AuditLogs from './pages/admin/AuditLogs';
-import Settings from './pages/admin/Settings';
+const StudentDashboard = lazy(() => import('./pages/student/Dashboard'));
+const ExamTake = lazy(() => import('./pages/student/ExamTake'));
+const StudentResult = lazy(() => import('./pages/student/Result'));
+const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'));
+const Students = lazy(() => import('./pages/admin/Students'));
+const ImportStudents = lazy(() => import('./pages/admin/ImportStudents'));
+const Exams = lazy(() => import('./pages/admin/Exams'));
+const ExamForm = lazy(() => import('./pages/admin/ExamForm'));
+const Questions = lazy(() => import('./pages/admin/Questions'));
+const QuestionBanks = lazy(() => import('./pages/admin/QuestionBanks'));
+const BankDetail = lazy(() => import('./pages/admin/BankDetail'));
+const ImportQuestions = lazy(() => import('./pages/admin/ImportQuestions'));
+const ImportReview = lazy(() => import('./pages/admin/ImportReview'));
+const ImportHistory = lazy(() => import('./pages/admin/ImportHistory'));
+const Results = lazy(() => import('./pages/admin/Results'));
+const Monitoring = lazy(() => import('./pages/admin/Monitoring'));
+const Analytics = lazy(() => import('./pages/admin/Analytics'));
+const AuditLogs = lazy(() => import('./pages/admin/AuditLogs'));
+const Settings = lazy(() => import('./pages/admin/Settings'));
+function PageFallback(){ return <div className="max-w-xl mx-auto p-10 text-center text-slate-500">Loading…</div>; }
 export default function App(){
   return <div className="min-h-screen"><Topbar />
+    <Suspense fallback={<PageFallback />}>
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/student" element={<RequireRole role="student"><StudentDashboard /></RequireRole>} />
@@ -53,6 +56,7 @@ export default function App(){
       <Route path="/" element={<Home />} />
       <Route path="*" element={<div className="max-w-xl mx-auto p-10 text-center">Not found</div>} />
     </Routes>
+    </Suspense>
   </div>;
 }
 import { useSession } from './services/auth';

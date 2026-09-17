@@ -15,6 +15,22 @@ async function flushOutbox(a:Attempt){ const o=JSON.parse(localStorage.getItem(O
   for(const [qid,r] of Object.entries<any>(o)){ if(a.answers[qid]!==r.val){ a.answers[qid]=r.val; changed=true; } }
   if(changed){ a.updatedAt=Date.now(); await repo.put('attempts',a); } localStorage.setItem(OUTBOX(a.id),'{}'); }
 
+// Countdown isolated in its own component: ticks locally every second so the
+// exam page does NOT rerender. Parent only re-syncs the authoritative deadline.
+function ExamTimer({ deadline, onExpire }:{ deadline:number; onExpire:()=>void }){
+  const [left,setLeft]=useState(()=>Math.max(0,deadline-Date.now()));
+  const cb=useRef(onExpire); cb.current=onExpire;
+  useEffect(()=>{
+    const t=setInterval(()=>{
+      const rem=deadline-Date.now();
+      if(rem<=0){ clearInterval(t); setLeft(0); cb.current(); return; }
+      setLeft(rem);
+    },1000);
+    return ()=>clearInterval(t);
+  },[deadline]);
+  return <span className="font-mono font-bold text-lg">{fmtClock(left)}</span>;
+}
+
 export default function ExamTake(){
   const { examId } = useParams(); const nav=useNavigate(); const { session } = useSession();
   const [phase,setPhase]=useState<'gate'|'exam'>('gate');
@@ -24,7 +40,19 @@ export default function ExamTake(){
   const [loaded,setLoaded]=useState(false);
   const [attempt,setAttempt]=useState<Attempt|null>(null);
   const [idx,setIdx]=useState(0); const [saveState,setSaveState]=useState<'saved'|'saving'|'offline'>('saved');
-  const [online,setOnline]=useState(navigator.onLine); const [left,setLeft]=useState(0);
+  const [online,setOnline]=useState(navigator.onLine);
+  // debounced background persist: UI updates instantly, network follows
+  const persistT=useRef<any>(null);
+  async function persistNow(){
+    const a=attemptRef.current; if(!a||a.status!=='IN_PROGRESS') return;
+    try{
+      await flushOutbox(a);
+      a.updatedAt=Date.now(); await repo.put('attempts',a);
+      if(attemptRef.current?.id===a.id){ setAttempt({...a}); setSaveState('saved'); }
+    }catch{ setSaveState('offline'); }
+  }
+  function schedulePersist(){ if(persistT.current) clearTimeout(persistT.current); persistT.current=setTimeout(()=>{ void persistNow(); },400); }
+  useEffect(()=>()=>{ if(persistT.current){ clearTimeout(persistT.current); persistT.current=null; void persistNow(); } },[]);
   useEffect(()=>{ (async()=>{
     setExam(await repo.get<Exam>('exams',examId!) ?? null);
     setBank(await repo.all<Question>(isSupabaseConfigured ? 'questionBankPublic' : 'questionBank'));
@@ -49,17 +77,19 @@ export default function ExamTake(){
     try{ await document.documentElement.requestFullscreen(); logEvent(a.id,exam.id,a.studentId,'FULLSCREEN_ENTER'); }catch{}
   }
 
-  // timer (server deadline authoritative) + auto-submit
+  // server deadline authoritative: light re-sync every 20s (deadline only —
+  // never clobbers local answers). The visible countdown ticks in <ExamTimer>.
   useEffect(()=>{
     if(phase!=='exam'||!attempt) return;
     const t=setInterval(async ()=>{
       const a=await repo.get<Attempt>('attempts',attempt.id);
       if(!a) return;
-      const rem=Math.max(0,(a.serverDeadline??(a.startedAt+60*60000))-Date.now());
-      setLeft(rem);
-      if(rem<=0){ submit('AUTO'); }
-      else { setAttempt({...a}); }
-    },1000);
+      const cur=attemptRef.current;
+      if(cur && a.serverDeadline!==cur.serverDeadline){
+        const next={...cur, serverDeadline:a.serverDeadline};
+        attemptRef.current=next; setAttempt(next);
+      }
+    },20000);
     return ()=>clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[phase,attempt?.id]);
@@ -77,6 +107,9 @@ export default function ExamTake(){
     return ()=>{ document.removeEventListener('fullscreenchange',onFs); document.removeEventListener('visibilitychange',onVis); window.removeEventListener('offline',onOff); window.removeEventListener('online',onOn); window.removeEventListener('beforeunload',onUnload); };
   },[phase,attempt?.id]);
 
+  // stable memo inputs: order maps never change after the attempt is built,
+  // so answering questions must NOT recompute the question list.
+  const qOrder=attempt?.questionOrder; const optOrder=attempt?.optionOrder;
   const safeQs=useMemo(()=>{ if(!attempt) return [];
     const byId=new Map(bank.map(q=>[q.id,q]));
     const snap=new Map((exam?.questionSnapshot??[]).map(s=>[s.qid,s]));
@@ -87,21 +120,21 @@ export default function ExamTake(){
       const order=attempt.optionOrder[qid]??opts.map((_,i)=>i);
       return { qid, text, type, marks, options:order.map(i=>opts[i]), map:order };
     }).filter(Boolean) as {qid:string;text:string;type:string;marks:number;options:string[];map:number[]}[];
-  },[attempt,bank,exam]);
+  },[qOrder,optOrder,bank,exam]);
 
+  // optimistic: UI updates instantly, persist follows debounced in background
   async function answer(qid:string, val:any, map?:number[]){
-    if(!attempt) return;
-    // translate displayed index -> original index for MCQ_SINGLE
+    const cur=attemptRef.current; if(!cur) return;
     let stored=val; if(map&&typeof val==='number') stored=map[val];
-    setSaveState('saving');
-    queueAnswer(attempt.id,qid,stored);
-    const a=await repo.get<Attempt>('attempts',attempt.id)!;
-    if(!a) return;
-    if(navigator.onLine){ await flushOutbox(a); a.currentIndex=idx; a.updatedAt=Date.now(); await repo.put('attempts',a); setAttempt({...a}); setSaveState('saved'); }
-    else { a.currentIndex=idx; await repo.put('attempts',a); setAttempt({...a}); setSaveState('offline'); }
+    const next={...cur, answers:{...cur.answers,[qid]:stored}, currentIndex:idx, updatedAt:Date.now()};
+    attemptRef.current=next; setAttempt(next); setSaveState('saving');
+    queueAnswer(next.id,qid,stored);
+    if(!navigator.onLine) setSaveState('offline');
+    schedulePersist();
   }
 
   async function submit(kind:'MANUAL'|'AUTO'){
+    if(persistT.current){ clearTimeout(persistT.current); persistT.current=null; }
     const cur=attemptRef.current?await repo.get<Attempt>('attempts',attemptRef.current.id):null;
     if(!cur||!exam||cur.status!=='IN_PROGRESS') return;
     await flushOutbox(cur);
@@ -140,7 +173,7 @@ export default function ExamTake(){
       <b>{exam.title}</b>
       <div className="flex items-center gap-3 text-sm"><span>{saveState==='saved'?'✓ Saved':saveState==='saving'?'⟳ Saving...':'⚠ Waiting to sync'}</span>
       {!online&&<span className="text-amber-600">⚠ Connection lost — answers saved locally</span>}
-      <span className="font-mono font-bold text-lg">{fmtClock(left)}</span></div>
+      {attempt&&<ExamTimer deadline={attempt.serverDeadline??(attempt.startedAt+60*60000)} onExpire={()=>submit('AUTO')} />}</div>
     </div>
     <div className="max-w-5xl mx-auto grid md:grid-cols-[1fr_220px] gap-4 p-4">
       <Card>{!cur?<p>Loading...</p>:<>
@@ -158,7 +191,7 @@ export default function ExamTake(){
           {cur.type==='TRUE_FALSE'&&null}
         </div>
         <div className="flex justify-between mt-6"><button className="btn-ghost" disabled={idx===0} onClick={()=>setIdx(i=>i-1)}>Previous</button>
-        {idx<safeQs.length-1?<button className="btn-primary" onClick={async()=>{setIdx(i=>i+1); const a=await repo.get<Attempt>('attempts',attempt!.id)!; if(a){a.currentIndex=idx+1; await repo.put('attempts',a);}}}>Next</button>
+        {idx<safeQs.length-1?<button className="btn-primary" onClick={()=>{ const a=attemptRef.current; if(a){ const next={...a, currentIndex:idx+1, updatedAt:Date.now()}; attemptRef.current=next; setAttempt(next); schedulePersist(); } setIdx(i=>i+1); }}>Next</button>
         :<button className="btn-danger" onClick={()=>{if(confirm(`Submit exam? Answered ${answered}/${safeQs.length}`)) submit('MANUAL');}}>Submit</button>}</div>
       </>}</Card>
       <Card><p className="font-bold text-sm mb-2">Questions</p>

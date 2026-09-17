@@ -338,14 +338,16 @@ $$;
 grant execute on function public.submit_attempt(text, jsonb) to authenticated;
 
 -- Proctoring event + server-side counters (never trust client counts).
-create or replace function public.log_exam_event(p_attempt_id text, p_type text, p_meta jsonb default '{}')
+-- NOTE: arg names (p_event_type / p_metadata) MUST match the keys the app
+-- sends via supabase().rpc() — PostgREST requires exact name match.
+create or replace function public.log_exam_event(p_attempt_id text, p_event_type text, p_metadata jsonb default '{}')
 returns void language plpgsql security definer set search_path = public as $$
 declare a public.attempts%rowtype; col text;
 begin
   select * into a from public.attempts where id = p_attempt_id;
   if not found then raise exception 'attempt not found'; end if;
   if a.uid <> auth.uid() and not public.is_admin() then raise exception 'not your attempt'; end if;
-  col := case p_type
+  col := case p_event_type
     when 'TAB_SWITCH' then 'tab_switch_count'
     when 'FULLSCREEN_EXIT' then 'fs_exit_count'
     when 'BROWSER_REFRESH' then 'refresh_count'
@@ -357,8 +359,8 @@ begin
   end if;
   insert into public.events (id, attempt_id, student_id, exam_id, event_type, timestamp, metadata)
   values ('ev_' || substr(md5(random()::text || clock_timestamp()::text), 1, 12),
-          a.id, a.student_id, a.exam_id, p_type,
-          (extract(epoch from now())*1000)::bigint, coalesce(p_meta, '{}'));
+          a.id, a.student_id, a.exam_id, p_event_type,
+          (extract(epoch from now())*1000)::bigint, coalesce(p_metadata, '{}'));
 end;
 $$;
 grant execute on function public.log_exam_event(text, text, jsonb) to authenticated;
