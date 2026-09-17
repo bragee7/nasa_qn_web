@@ -15,6 +15,17 @@ async function flushOutbox(a:Attempt){ const o=JSON.parse(localStorage.getItem(O
   for(const [qid,r] of Object.entries<any>(o)){ if(a.answers[qid]!==r.val){ a.answers[qid]=r.val; changed=true; } }
   if(changed){ a.updatedAt=Date.now(); await repo.put('attempts',a); } localStorage.setItem(OUTBOX(a.id),'{}'); }
 
+// Fullscreen must be requested while the click gesture is still valid.
+// Returns true when the document actually entered fullscreen.
+async function enterFullscreen(): Promise<boolean>{
+  try{
+    const el=document.documentElement as any;
+    if(typeof el.requestFullscreen!=='function') return false;
+    await el.requestFullscreen();
+    return !!document.fullscreenElement;
+  }catch{ return false; }
+}
+
 // Countdown isolated in its own component: ticks locally every second so the
 // exam page does NOT rerender. Parent only re-syncs the authoritative deadline.
 function ExamTimer({ deadline, onExpire }:{ deadline:number; onExpire:()=>void }){
@@ -41,6 +52,7 @@ export default function ExamTake(){
   const [attempt,setAttempt]=useState<Attempt|null>(null);
   const [idx,setIdx]=useState(0); const [saveState,setSaveState]=useState<'saved'|'saving'|'offline'>('saved');
   const [online,setOnline]=useState(navigator.onLine);
+  const [fsOn,setFsOn]=useState(!!document.fullscreenElement);
   // debounced background persist: UI updates instantly, network follows
   const persistT=useRef<any>(null);
   async function persistNow(){
@@ -63,18 +75,28 @@ export default function ExamTake(){
   async function start(){
     setErr('');
     if(!exam||!session) return;
-    if(exam.passwordHash!==(await hashPassword(pw))){ setErr('Incorrect exam password'); return; }
+    // Fullscreen FIRST, before any await: browsers only honour requestFullscreen
+    // while the click gesture is still valid. Awaiting network/hash first loses
+    // transient activation and the request is silently rejected.
+    const fsOk=await enterFullscreen();
+    setFsOn(fsOk);
+    const badPw=exam.passwordHash!==(await hashPassword(pw));
     const nowT=Date.now();
-    if(nowT<exam.startAt){ setErr('Exam has not started yet'); return; }
-    if(nowT>exam.endAt){ setErr('Exam window has ended'); return; }
+    if(badPw || nowT<exam.startAt || nowT>exam.endAt){
+      if(document.fullscreenElement){ try{ await document.exitFullscreen(); }catch{} }
+      setFsOn(false);
+      if(badPw) setErr('Incorrect exam password');
+      else if(nowT<exam.startAt) setErr('Exam has not started yet');
+      else setErr('Exam window has ended');
+      return;
+    }
     // idempotent: reuse active attempt (no duplicate on refresh)
     const mine=await repo.query<Attempt>('attempts',x=>x.examId===exam.id&&x.uid===session.uid);
     let a=mine.find(x=>x.status==='IN_PROGRESS');
     if(!a && exam.oneAttemptOnly && mine.some(x=>x.status!=='IN_PROGRESS')){ setErr('Already attempted'); return; }
-    if(!a){ a=buildAttempt(exam,bank,session.studentId!,session.uid); await repo.put('attempts',a); logEvent(a.id,exam.id,a.studentId,'EXAM_STARTED'); }
+    if(!a){ a=buildAttempt(exam,bank,session.studentId!,session.uid); await repo.put('attempts',a); logEvent(a.id,exam.id,a.studentId,'EXAM_STARTED'); if(fsOk) logEvent(a.id,exam.id,a.studentId,'FULLSCREEN_ENTER'); else logEvent(a.id,exam.id,a.studentId,'FULLSCREEN_BLOCKED'); }
     else { a.refreshCount++; a.updatedAt=Date.now(); await repo.put('attempts',a); logEvent(a.id,exam.id,a.studentId,'EXAM_RESUMED',{reason:'reopen'}); }
     setAttempt(a); setIdx(a.currentIndex||0); setPhase('exam');
-    try{ await document.documentElement.requestFullscreen(); logEvent(a.id,exam.id,a.studentId,'FULLSCREEN_ENTER'); }catch{}
   }
 
   // server deadline authoritative: light re-sync every 20s (deadline only —
@@ -97,7 +119,7 @@ export default function ExamTake(){
   // fullscreen + visibility + network listeners
   useEffect(()=>{
     if(phase!=='exam'||!attempt||!exam) return;
-    const onFs=()=>{ if(!document.fullscreenElement) logEvent(attempt.id,exam.id,attempt.studentId,'FULLSCREEN_EXIT'); else logEvent(attempt.id,exam.id,attempt.studentId,'FULLSCREEN_ENTER'); };
+    const onFs=()=>{ const on=!!document.fullscreenElement; setFsOn(on); if(!attempt||!exam) return; logEvent(attempt.id,exam.id,attempt.studentId,on?'FULLSCREEN_ENTER':'FULLSCREEN_EXIT'); };
     const onVis=()=>{ logEvent(attempt.id,exam.id,attempt.studentId,document.hidden?'TAB_SWITCH':'TAB_RETURN',{visibilityState:document.visibilityState}); };
     const onOff=()=>{ setOnline(false); setSaveState('offline'); logEvent(attempt.id,exam.id,attempt.studentId,'NETWORK_DISCONNECTED'); };
     const onOn=async()=>{ setOnline(true); const a=await repo.get<Attempt>('attempts',attempt.id); if(a){await flushOutbox(a); setAttempt({...a});} logEvent(attempt.id,exam.id,attempt.studentId,'NETWORK_RECONNECTED'); setSaveState('saved'); };
@@ -169,6 +191,10 @@ export default function ExamTake(){
   const cur=safeQs[idx];
   const answered=attempt?Object.keys(attempt.answers).length:0;
   return <div className="min-h-screen bg-white">
+    {!fsOn&&<div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-sm text-amber-800 flex items-center gap-2">
+      <span>⚠ Fullscreen is off — tab switches & exits are still recorded.</span>
+      <button className="btn-ghost !px-2 !py-1 text-xs ml-auto" onClick={async()=>{ const ok=await enterFullscreen(); setFsOn(ok); }}>Re-enter fullscreen</button>
+    </div>}
     <div className="border-b px-4 py-2 flex items-center justify-between sticky top-0 bg-white z-10">
       <b>{exam.title}</b>
       <div className="flex items-center gap-3 text-sm"><span>{saveState==='saved'?'✓ Saved':saveState==='saving'?'⟳ Saving...':'⚠ Waiting to sync'}</span>
